@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>用户中心 - 信息检索系统</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
+        .panel { border: 1px solid #ccc; padding: 20px; border-radius: 5px; margin-top: 20px; }
+        .danger-zone { border-color: red; background-color: #fff0f0; }
+        .btn { padding: 8px 15px; cursor: pointer; }
+        .btn-danger { background-color: red; color: white; border: none; }
+    </style>
+</head>
+<body>
+    <h2>用户中心</h2>
+    <button onclick="location.href='index.html'" class="btn">返回首页</button>
+
+    <div class="panel">
+        <h3>基本信息</h3>
+        <p>用户名: <span id="info-username"></span></p>
+    </div>
+
+    <div class="panel">
+        <h3>近期检索记录</h3>
+        <ul id="log-list"></ul>
+    </div>
+
+    <div class="panel danger-zone">
+        <h3 style="color: red;">危险操作</h3>
+        <p>注销账号将触发数据库事务，永久删除您的基础信息、用户偏好配置及检索日志。</p>
+        <button id="delete-account-btn" class="btn btn-danger">彻底注销账号</button>
+    </div>
+
+    <script src="js/api_client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

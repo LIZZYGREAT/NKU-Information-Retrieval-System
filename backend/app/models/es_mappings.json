@@ -1,0 +1,22 @@
+{
+  "mappings": {
+    "properties": {
+      "url": {
+        "type": "keyword"
+      },
+      "title": {
+        "type": "text",
+        "analyzer": "ik_max_word",
+        "search_analyzer": "ik_smart"
+      },
+      "content": {
+        "type": "text",
+        "analyzer": "ik_max_word",
+        "search_analyzer": "ik_smart"
+      },
+      "attachments": {
+        "type": "keyword"
+      }
+    }
+  }
+}
