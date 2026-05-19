@@ -1,0 +1,12 @@
+# 核心抓取框架
+Scrapy>=2.11.0
+
+# 关系型数据库驱动
+PyMySQL>=1.1.0
+
+# ElasticSearch 官方客户端
+elasticsearch>=8.10.0
+
+# 异步相关及其他系统底层依赖
+Twisted>=22.10.0
+lxml>=4.9.0

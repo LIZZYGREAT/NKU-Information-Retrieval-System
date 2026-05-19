@@ -1,2 +1,5 @@
 *.jsonl
 docs
+snapshots
+*.pyc
+*__pycache__/
