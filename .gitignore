@@ -3,3 +3,4 @@ docs
 snapshots
 *.pyc
 *__pycache__/
+*config.py
