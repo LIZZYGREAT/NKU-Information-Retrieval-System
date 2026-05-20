@@ -2,7 +2,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import search_router, user_router, log_router
-
+import os
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), "../../.env.dev"))
 # 初始化应用实例 [cite: 5]
 app = FastAPI(
     title="搜索引擎与信息管理系统 API",

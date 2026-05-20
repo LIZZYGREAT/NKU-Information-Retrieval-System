@@ -2,7 +2,9 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List
 from app.services.user_service import UserService
-from app.dao.mysql_dao import MySQLDao  # 管理员视图查询可直接通过 DAO
+
+from app.dao.mysql_dao import MySQLDao 
+from app.dependencies import get_user_service, get_mysql_dao
 
 router = APIRouter(prefix="/api", tags=["Logs & Analytics"])
 

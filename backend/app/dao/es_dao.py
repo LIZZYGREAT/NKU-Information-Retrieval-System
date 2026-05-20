@@ -3,9 +3,9 @@ from elasticsearch import Elasticsearch
 from typing import Dict, Any
 
 class EsDAO:
-    def __init__(self, es_client: Elasticsearch):
+    def __init__(self, es_client: Elasticsearch, index_name: str):
         self.es = es_client
-        self.index_name = "nku_web_index"
+        self.index_name = index_name
 
     def build_base_query(self, query_text: str, search_type: str) -> Dict[str, Any]:
         """

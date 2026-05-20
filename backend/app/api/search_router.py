@@ -45,6 +45,6 @@ async def view_snapshot(url: str = Query(..., description="目标网页的原始
         html_content = search_service.get_snapshot(url)
         return HTMLResponse(content=html_content, status_code=200)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail="Snapshot HTML file not found on disk or DB mapping missing.")
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read snapshot: {str(e)}")

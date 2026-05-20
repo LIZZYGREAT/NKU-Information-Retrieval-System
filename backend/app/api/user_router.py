@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, EmailStr
 from app.services.user_service import UserService
+from app.dependencies import get_user_service
 
 router = APIRouter(prefix="/api/user", tags=["Auth & User Management"])
 

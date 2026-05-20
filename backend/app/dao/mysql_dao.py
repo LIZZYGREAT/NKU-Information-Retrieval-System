@@ -96,3 +96,13 @@ class MySQLDao:
                 results = cursor.fetchall()
                 # 提取单列结果组装为字符串列表
                 return [row['query_text'] for row in results]
+
+
+    def get_snapshot_path_by_url(self, url: str) -> Optional[str]:
+        """根据 URL 从缓存表中读取物理快照路径"""
+        sql = "SELECT snapshot_path FROM WebPageCache WHERE url = %s"
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, (url,))
+                result = cursor.fetchone()
+                return result['snapshot_path'] if result else None
