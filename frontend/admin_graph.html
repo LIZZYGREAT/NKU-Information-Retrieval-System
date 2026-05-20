@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统管理员 - 站群有向链接拓扑图</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+            overflow: hidden;
+        }
+        .nav-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .btn {
+            padding: 8px 16px;
+            cursor: pointer;
+            background-color: #fff;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            color: #3c4043;
+            font-size: 14px;
+            text-decoration: none;
+        }
+        .btn:hover {
+            background-color: #f5f5f5;
+            border-color: #bcaaa4;
+        }
+        #graph-container {
+            width: 100%;
+            height: calc(100vh - 100px);
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            position: relative;
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+        /* D3 元素样式控制 */
+        .link {
+            stroke: #b0bec5;
+            stroke-opacity: 0.6;
+            stroke-width: 1.2px;
+        }
+        .node circle {
+            stroke: #fff;
+            stroke-width: 1.5px;
+            cursor: grab;
+        }
+        .node circle:active {
+            cursor: grabbing;
+        }
+        .node text {
+            font-size: 11px;
+            fill: #37474f;
+            pointer-events: none;
+            text-anchor: middle;
+        }
+        /* 悬停提示框 (Tooltip) 样式 */
+        .tooltip {
+            position: absolute;
+            padding: 10px;
+            background: rgba(38, 50, 56, 0.9);
+            color: #fff;
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.5;
+            pointer-events: none;
+            display: none;
+            z-index: 100;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            max-width: 350px;
+            word-break: break-all;
+        }
+    </style>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+
+    <div class="nav-header">
+        <h2>NKU 检索系统 - 站群有向链接拓扑大屏</h2>
+        <a href="index.html" class="btn">返回首页</a>
+    </div>
+
+    <div id="graph-container">
+        <div id="tooltip" class="tooltip"></div>
+    </div>
+
+    <script src="js/api_client.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+            const container = document.getElementById('graph-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            const tooltip = d3.select("#tooltip");
+
+            // 1. 初始化 SVG 画布及缩放(Zoom)视口
+            const svg = d3.select("#graph-container")
+                .append("svg")
+                .attr("viewBox", `0 0 ${width} ${height}`);
+
+            const g = svg.append("g"); // 所有的图表元素均挂载到这个 g 分层组中
+
+            svg.call(d3.zoom()
+                .scaleExtent([0.1, 10])
+                .on("zoom", (event) => {
+                    g.attr("transform", event.transform);
+                })
+            );
+
+            // 2. 定义有向边的箭头标记
+            g.append("defs").append("marker")
+                .attr("id", "arrow")
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 15) 
+                .attr("refY", 0)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path")
+                .attr("d", "M0,-5L10,0L0,5")
+                .attr("fill", "#b0bec5");
+
+            // 3. 核心业务状态变量
+            let globalNodes = [];
+            let globalLinks = [];
+            let simulation;
+            let linkGroup, nodeGroup; 
+
+            // 执行初始化
+            initGraph();
+
+            async function initGraph() {
+                try {
+                    // 初始化加载宏观域节点
+                    const response = await window.apiClient.get('/admin/graph/macro');
+                    if (response.code === 200) {
+                        globalNodes = response.data.nodes;
+                        globalLinks = response.data.links;
+                        
+                        // 构建更新组（现在 g 已经正确定义了）
+                        linkGroup = g.append("g").attr("class", "links");
+                        nodeGroup = g.append("g").attr("class", "nodes");
+                        
+                        setupSimulation();
+                        updateGraph();
+                    }
+                } catch (error) {
+                    console.error("加载宏观拓扑失败", error);
+                }
+            }
+
+            function setupSimulation() {
+                simulation = d3.forceSimulation()
+                    .force("link", d3.forceLink().id(d => d.id).distance(120))
+                    .force("charge", d3.forceManyBody().strength(-300))
+                    .force("center", d3.forceCenter(width / 2, height / 2))
+                    .force("collision", d3.forceCollide().radius(d => getRadius(d.pagerank) + 8));
+                    
+                simulation.on("tick", ticked);
+            }
+
+            function updateGraph() {
+                // 连线 Update 模式
+                const linksUpdate = linkGroup.selectAll("line").data(globalLinks);
+                linksUpdate.exit().remove();
+                const linksEnter = linksUpdate.enter().append("line")
+                    .attr("class", "link")
+                    .attr("marker-end", "url(#arrow)");
+                
+                // 节点 Update 模式
+                const nodesUpdate = nodeGroup.selectAll(".node").data(globalNodes, d => d.id);
+                nodesUpdate.exit().remove();
+                
+                const nodesEnter = nodesUpdate.enter().append("g")
+                    .attr("class", "node")
+                    .call(d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended))
+                    .on("click", handleDoubleClick); 
+                    
+                nodesEnter.append("circle")
+                    .attr("r", d => getRadius(d.pagerank))
+                    .attr("fill", d => d.type === "domain" ? colorScale(d.id) : d3.color(colorScale(d.id)).brighter(1.5)) 
+                    .on("mouseover", (event, d) => {
+                        tooltip.style("display", "block")
+                            .html(`
+                                <strong>节点名称:</strong> ${d.name}<br/>
+                                <strong>节点类型:</strong> ${d.type === 'domain' ? '聚合域' : '具体网页'}<br/>
+                                <strong>权重 (PR):</strong> ${d.pagerank.toFixed(5)}
+                            `);
+                    })
+                    .on("mousemove", (event) => {
+                        tooltip.style("left", (event.pageX + 15) + "px")
+                            .style("top", (event.pageY - 15) + "px");
+                    })
+                    .on("mouseout", () => tooltip.style("display", "none"));
+
+                nodesEnter.append("text")
+                    .attr("dy", d => getRadius(d.pagerank) + 12)
+                    .text(d => d.name.length > 20 ? d.name.substring(0, 20) + "..." : d.name)
+                    .style("opacity", d => d.type === "domain" ? 1 : 0.4);
+
+                // 重启力引擎
+                simulation.nodes(globalNodes);
+                simulation.force("link").links(globalLinks);
+                simulation.alpha(1).restart();
+            }
+
+            // 双击触发异步下钻
+            async function handleDoubleClick(event, d) {
+                if (d.type === "domain") {
+                    try {
+                        const res = await window.apiClient.get(`/admin/graph/micro?domain=${d.id}`);
+                        const newNodes = res.data.nodes;
+                        const newLinks = res.data.links;
+
+                        const uniqueNewNodes = newNodes.filter(n => !globalNodes.some(existing => existing.id === n.id));
+                        
+                        // 执行增量推送
+                        globalNodes.push(...uniqueNewNodes);
+                        globalLinks.push(...newLinks);
+
+                        // 更新画布并使新增节点围绕其父节点(聚合域)展开
+                        uniqueNewNodes.forEach(n => {
+                            n.x = d.x + (Math.random() * 40 - 20);
+                            n.y = d.y + (Math.random() * 40 - 20);
+                        });
+
+                        updateGraph();
+                    } catch (error) {
+                        console.error("加载微观拓扑失败", error);
+                    }
+                }
+            }
+
+            // 阻尼拖拽算分函数
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+
+            // 映射 PR 的半径
+            function getRadius(pr) {
+                return Math.max(8, Math.sqrt(pr) * 45); 
+            }
+
+            // 步进渲染函数
+            function ticked() {
+                linkGroup.selectAll("line")
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                nodeGroup.selectAll(".node")
+                    .attr("transform", d => `translate(${d.x},${d.y})`);
+            }
+        });
+    </script>
+</html>

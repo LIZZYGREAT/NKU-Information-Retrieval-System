@@ -2,6 +2,8 @@
 import os
 from typing import Dict, Any
 from fastapi import Depends
+from urllib.parse import urlparse
+from collections import defaultdict
 
 from app.dao.mysql_dao import MySQLDao
 from app.dao.es_dao import EsDAO
@@ -75,3 +77,73 @@ class SearchService:
 
         with open(full_path, "r", encoding="utf-8") as f:
             return f.read()
+
+
+    def get_macro_topology(self) -> Dict[str, Any]:
+        """
+        构建域级宏观拓扑：合并同一二级域名下的 PR 值与跨域边
+        """
+        raw_edges = self.mysql_dao.get_all_topology_edges()
+        try:
+            pr_map = self.es_dao.fetch_all_pageranks()
+        except Exception:
+            pr_map = {}
+
+        domain_pr = defaultdict(float)
+        domain_edges = defaultdict(int)
+        unique_domains = set()
+
+        # 1. 遍历并合并跨域连线
+        for edge in raw_edges:
+            src_domain = urlparse(edge['source_url']).netloc
+            tgt_domain = urlparse(edge['target_url']).netloc
+            
+            unique_domains.add(src_domain)
+            unique_domains.add(tgt_domain)
+            
+            if src_domain != tgt_domain:
+                # 记录跨域指向权重（如 cc.nankai 指向 jwc.nankai 的总次数）
+                domain_edges[(src_domain, tgt_domain)] += 1
+
+        # 2. 累加计算域的整体 PR 权重
+        for url, pr in pr_map.items():
+            domain = urlparse(url).netloc
+            domain_pr[domain] += pr
+
+        nodes = [{"id": dom, "name": dom, "pagerank": domain_pr[dom], "type": "domain"} for dom in unique_domains]
+        links = [{"source": src, "target": tgt, "weight": weight} for (src, tgt), weight in domain_edges.items()]
+
+        return {"nodes": nodes, "links": links}
+
+    def get_micro_topology(self, target_domain: str) -> Dict[str, Any]:
+        """
+        按需下钻微观拓扑：提取指定域名内部的 1 度网页节点与连线
+        """
+        raw_edges = self.mysql_dao.get_all_topology_edges()
+        title_map = self.mysql_dao.get_url_to_title_map()
+        try:
+            pr_map = self.es_dao.fetch_all_pageranks()
+        except Exception:
+            pr_map = {}
+
+        unique_urls = set()
+        links = []
+
+        for edge in raw_edges:
+            src = edge['source_url']
+            tgt = edge['target_url']
+            src_dom = urlparse(src).netloc
+            tgt_dom = urlparse(tgt).netloc
+
+            # 过滤提取域内自闭环拓扑边
+            if src_dom == target_domain and tgt_dom == target_domain:
+                unique_urls.add(src)
+                unique_urls.add(tgt)
+                links.append({"source": src, "target": tgt})
+
+        nodes = []
+        for url in unique_urls:
+            name = title_map.get(url, url.replace("https://", "").replace("http://", "")[:25])
+            nodes.append({"id": url, "name": name, "pagerank": pr_map.get(url, 0.001), "type": "page"})
+
+        return {"nodes": nodes, "links": links}

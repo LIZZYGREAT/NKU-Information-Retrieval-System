@@ -3,6 +3,7 @@ import hashlib
 import pymysql
 from elasticsearch import Elasticsearch
 from scrapy.exceptions import DropItem
+import datetime
 
 class SnapshotFilePipeline:
     def __init__(self, storage_path):
@@ -47,11 +48,14 @@ class ElasticSearchPipeline:
         )
 
     def process_item(self, item, spider):
+        # 组装文档，加入时效性时间戳与静态PageRank初值
         es_doc = {
             "url": item.get('url'),
             "title": item.get('title'),
             "content": item.get('content'),
-            "attachments": item.get('attachments', [])
+            "attachments": item.get('attachments', []),
+            "crawl_time": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), # 生成标准UTC时间字符串
+            "pagerank": item.get('pagerank', 0.001) # 默认赋予低权威度基准值，等待离线图算法脚本批量重写
         }
 
         try:
@@ -102,14 +106,15 @@ class MySQLPipeline:
         if 'snapshot_path' not in item:
             return item
 
-        sql = """
+        # 1. 写入网页快照缓存表逻辑
+        sql_cache = """
             INSERT INTO WebPageCache (url, title, snapshot_path)
             VALUES (%s, %s, %s)
             ON DUPLICATE KEY UPDATE
             title = VALUES(title), snapshot_path = VALUES(snapshot_path)
         """
         try:
-            self.cursor.execute(sql, (
+            self.cursor.execute(sql_cache, (
                 item.get('url'),
                 item.get('title'),
                 item.get('snapshot_path')
@@ -117,6 +122,23 @@ class MySQLPipeline:
             self.connection.commit()
         except pymysql.Error as e:
             self.connection.rollback()
-            spider.logger.error(f"MySQL insertion failed in {self.db_name} for {item['url']}: {e}")
+            spider.logger.error(f"MySQL cache insertion failed for {item['url']}: {e}")
+
+        # 2.写入 PageLinks 有向边拓扑表逻辑
+        if 'out_links' in item and item['out_links']:
+            source_url = item['url']
+            # 构建批量插入参数列表
+            link_data = [(source_url, target_url) for target_url in item['out_links']]
+            
+            sql_links = """
+                INSERT IGNORE INTO PageLinks (source_url, target_url) 
+                VALUES (%s, %s)
+            """
+            try:
+                self.cursor.executemany(sql_links, link_data)
+                self.connection.commit()
+            except pymysql.Error as e:
+                self.connection.rollback()
+                spider.logger.error(f"MySQL links insertion failed for {source_url}: {e}")
 
         return item

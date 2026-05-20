@@ -1,3 +1,4 @@
+# crawler/nku_spider/items.py
 import scrapy
 
 class NkuSpiderItem(scrapy.Item):
@@ -8,5 +9,8 @@ class NkuSpiderItem(scrapy.Item):
     attachments = scrapy.Field()
     
     # 快照处理专用
-    raw_html = scrapy.Field()       # 原始HTML文本，供落盘使用
-    snapshot_path = scrapy.Field()  # 落盘后的相对路径，交由下游管道存入数据库
+    raw_html = scrapy.Field()
+    snapshot_path = scrapy.Field()
+    
+    # 新增：用于 PageRank 拓扑图构建的当前页面出链集合
+    out_links = scrapy.Field()

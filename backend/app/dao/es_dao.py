@@ -104,3 +104,16 @@ class EsDAO:
             }
         }
         return self.es.search(index=self.index_name, body=body)
+    
+    def fetch_all_pageranks(self) -> Dict[str, float]:
+        """
+        从 Elasticsearch 索引中批量获取所有文档的 PageRank 静态权威度数值
+        """
+        body = {
+            "query": {"match_all": {}},
+            "size": 5000,  # 满足南开主站及核心学院站点的文档规模
+            "_source": ["pagerank"]
+        }
+        res = self.es.search(index=self.index_name, body=body)
+        # 转化为字典结构：{ url: pagerank_score }
+        return {hit["_id"]: hit["_source"].get("pagerank", 0.001) for hit in res["hits"]["hits"]}

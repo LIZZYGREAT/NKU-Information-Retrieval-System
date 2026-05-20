@@ -2,9 +2,10 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List
 from app.services.user_service import UserService
+from app.services.search_service import SearchService
 
 from app.dao.mysql_dao import MySQLDao 
-from app.dependencies import get_user_service, get_mysql_dao
+from app.dependencies import get_user_service, get_mysql_dao,get_search_service
 
 router = APIRouter(prefix="/api", tags=["Logs & Analytics"])
 
@@ -33,3 +34,20 @@ async def get_admin_report(mysql_dao: MySQLDao = Depends(get_mysql_dao)):
         return {"code": 200, "data": report_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch view data: {str(e)}")
+
+
+@router.get("/admin/graph/macro", response_model=dict)
+async def get_macro_graph(search_service: SearchService = Depends(get_search_service)):
+    """获取初始站群域级拓扑"""
+    try:
+        return {"code": 200, "data": search_service.get_macro_topology()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/admin/graph/micro", response_model=dict)
+async def get_micro_graph(domain: str = Query(...), search_service: SearchService = Depends(get_search_service)):
+    """根据双击的域名获取微观网页拓扑"""
+    try:
+        return {"code": 200, "data": search_service.get_micro_topology(domain)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

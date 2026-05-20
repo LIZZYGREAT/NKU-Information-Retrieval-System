@@ -41,3 +41,12 @@ CREATE TABLE `UserPreference` (
     CONSTRAINT `fk_pref_user` FOREIGN KEY (`user_id`) REFERENCES `User` (`user_id`) ON DELETE CASCADE,
     UNIQUE KEY `uk_user_category` (`user_id`, `category`) -- 确保单一用户在同一类别下只有一条权重记录
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户搜索与推荐偏好权重表';
+
+
+CREATE TABLE `PageLinks` (
+    `link_id` INT AUTO_INCREMENT PRIMARY KEY,
+    `source_url` VARCHAR(512) NOT NULL COMMENT '源页面网址',
+    `target_url` VARCHAR(512) NOT NULL COMMENT '目的页面网址',
+    INDEX `idx_source` (`source_url`(255)),
+    INDEX `idx_target` (`target_url`(255))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='网页超链接拓扑有向边表';

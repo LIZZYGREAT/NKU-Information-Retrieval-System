@@ -73,14 +73,12 @@ class NankaiSpider(scrapy.Spider):
         
         item['content'] = ' '.join([text.strip() for text in raw_text_list if text.strip()])
 
-        # 4. 提取文档查询要求的附件链接 [cite: 20, 21]
+        # 4. 提取文档查询要求的附件链接
         doc_links = response.xpath('//a[contains(@href, ".doc") or contains(@href, ".pdf") or contains(@href, ".xls")]/@href').getall()
         item['attachments'] = [response.urljoin(link) for link in doc_links]
 
-        # 产出当前页面的数据条目
-        yield item
-
-        # 5. 提取新链接并继续爬取
+        # 5. 提取新链接并继续爬取，同时收集有效出链构建拓扑
+        valid_out_links = set()
         links = response.xpath('//a/@href').getall()
         for link in links:
             if link.startswith('javascript:') or link.startswith('mailto:'):
@@ -89,5 +87,14 @@ class NankaiSpider(scrapy.Spider):
             # 过滤多媒体与压缩包等非网页资源
             if link.lower().endswith(('.jpg', '.png', '.gif', '.mp4', '.zip', '.rar', '.doc', '.docx', '.pdf', '.xls', '.xlsx')):
                 continue
+            
+            # 拼接绝对路径并加入当前页面的出链集合
+            full_link = response.urljoin(link)
+            valid_out_links.add(full_link)
                 
             yield response.follow(link, callback=self.parse)
+            
+        item['out_links'] = list(valid_out_links)
+
+        # 产出当前页面的数据条目
+        yield item

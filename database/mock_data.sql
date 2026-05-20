@@ -56,3 +56,5 @@ GROUP BY table_schema;
 
 
 SELECT * FROM WebPageCache WHERE url = 'https://news.nankai.edu.cn/index.shtml';
+
+TRUNCATE TABLE WebPageCache;
