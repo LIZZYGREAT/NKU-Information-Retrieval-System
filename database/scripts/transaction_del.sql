@@ -23,9 +23,11 @@ BEGIN
     -- 2. 删除依赖表 SearchLog 的记录
     DELETE FROM SearchLog WHERE user_id = p_user_id;
 
-    -- 3. 删除被参照的主表 User 的记录
-    DELETE FROM User WHERE user_id = p_user_id;
+    -- 3. 删除静态画像表 UserProfile 的记录
+    DELETE FROM UserProfile WHERE user_id = p_user_id;
 
+    -- 4. 删除被参照的主表 User 的记录
+    DELETE FROM User WHERE user_id = p_user_id;
     -- 若所有 DELETE 操作均未触发异常，则提交事务
     COMMIT;
     

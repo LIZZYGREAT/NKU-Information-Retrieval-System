@@ -12,44 +12,42 @@ class UserService:
         self.mysql_dao = mysql_dao
 
     def register_user(self, username: str, email: str, password_plain: str) -> Dict[str, Any]:
-        """
-        处理注册逻辑。
-        执行单向哈希加盐加密后存储。
-        """
         if not username or not password_plain or not email:
             raise ValueError("Missing required registration fields")
             
-        existing_user = self.mysql_dao.get_user_by_username(username)
-        if existing_user:
-            raise ValueError("Username already exists")
+        if self.mysql_dao.get_user_by_email(email):
+            raise ValueError("该邮箱已被注册")
+        if self.mysql_dao.get_user_by_username(username):
+            raise ValueError("该用户名已被占用")
 
-        # 使用 pbkdf2:sha256 算法生成带有随机盐值的哈希摘要
         password_hash = generate_password_hash(password_plain)
         
         try:
             user_id = self.mysql_dao.create_user(username, email, password_hash)
-            return {"user_id": user_id, "username": username, "status": "registered"}
+            return {"user_id": user_id, "username": username, "email": email, "status": "registered"}
         except Exception as e:
             logging.error(f"Registration DB error: {e}")
-            raise ValueError("Email format invalid or DB constraint triggered")
+            err = str(e).lower()
+            if 'email' in err or 'duplicate' in err and 'email' in err:
+                raise ValueError("该邮箱已被注册")
+            if 'username' in err:
+                raise ValueError("该用户名已被占用")
+            raise ValueError("注册失败，请检查填写信息")
 
-    def login_user(self, username: str, password_plain: str) -> Dict[str, Any]:
-        """
-        处理登录验证。
-        比对数据库中存储的 password_hash 与前端传入明文的计算结果。
-        """
-        user_record = self.mysql_dao.get_user_by_username(username)
+    def login_user(self, email: str, password_plain: str) -> Dict[str, Any]:
+        """处理登录验证，验证目标从 username 切换为 email"""
+        user_record = self.mysql_dao.get_user_by_email(email)
         if not user_record:
-            raise PermissionError("Invalid username or password")
+            raise PermissionError("Invalid email or password")
 
-        # 校验哈希匹配
         is_valid = check_password_hash(user_record['password_hash'], password_plain)
         if not is_valid:
-            raise PermissionError("Invalid username or password")
+            raise PermissionError("Invalid email or password")
 
         return {
             "user_id": user_record["user_id"],
             "username": user_record["username"],
+            "email": user_record["email"],
             "role": user_record["role"]
         }
 
@@ -66,3 +64,19 @@ class UserService:
         if not user_id:
             return []
         return self.mysql_dao.get_recent_search_logs(user_id)
+    
+    def process_onboarding(self, user_id: int, role: str, college_id: int = None, interests: list = None) -> bool:
+        """处理冷启动业务逻辑校验与入库"""
+        if role not in ["本科生", "研究生", "教职工", "访客"]:
+            role = "访客"
+            college_id = None
+        
+        # 强制访客无学院归属
+        if role == "访客":
+            college_id = None
+            
+        return self.mysql_dao.save_onboarding_data(user_id, role, college_id, interests or [])
+
+
+    def get_user_profile(self, user_id: int) -> Dict[str, Any]:
+        return self.mysql_dao.get_user_profile(user_id)

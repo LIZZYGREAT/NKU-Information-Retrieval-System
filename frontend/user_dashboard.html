@@ -4,20 +4,67 @@
     <meta charset="UTF-8">
     <title>用户中心 - 信息检索系统</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
-        .panel { border: 1px solid #ccc; padding: 20px; border-radius: 5px; margin-top: 20px; }
-        .danger-zone { border-color: red; background-color: #fff0f0; }
-        .btn { padding: 8px 15px; cursor: pointer; }
-        .btn-danger { background-color: red; color: white; border: none; }
+        body { font-family: sans-serif; padding: 20px; max-width: 640px; margin: 0 auto; color: #333; }
+        .panel { border: 1px solid #dfe1e5; padding: 20px; border-radius: 8px; margin-top: 20px; background: #fff; }
+        .danger-zone { border-color: #f5c6cb; background-color: #fff0f0; }
+        .btn { padding: 8px 15px; cursor: pointer; border-radius: 4px; }
+        .btn-danger { background-color: #d93025; color: white; border: none; }
+        .field { margin-bottom: 16px; }
+        .field label, .field > strong { display: block; margin-bottom: 6px; font-size: 14px; color: #5f6368; }
+        .readonly { padding: 10px 12px; background: #f8f9fa; border-radius: 4px; font-size: 15px; }
+        .field select { width: 100%; padding: 10px; font-size: 15px; box-sizing: border-box; }
+        .interest-group { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+        .interest-group label { font-size: 14px; cursor: pointer; }
+        .divider { border: none; border-top: 1px solid #ebebeb; margin: 20px 0; }
+        h3 { margin: 0 0 16px; font-size: 18px; }
     </style>
 </head>
 <body>
     <h2>用户中心</h2>
-    <button onclick="location.href='index.html'" class="btn">返回首页</button>
+    <button type="button" onclick="location.href='index.html'" class="btn">返回首页</button>
 
     <div class="panel">
-        <h3>基本信息</h3>
-        <p>用户名: <span id="info-username"></span></p>
+        <h3>账户与个性化配置</h3>
+        <form id="profile-form">
+            <div class="field">
+                <strong>用户名</strong>
+                <div class="readonly" id="info-username"></div>
+            </div>
+            <div class="field">
+                <strong>邮箱</strong>
+                <div class="readonly" id="info-email"></div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="field">
+                <label for="role-select">身份角色</label>
+                <select id="role-select">
+                    <option value="本科生">本科生</option>
+                    <option value="研究生">研究生</option>
+                    <option value="教职工">教职工</option>
+                    <option value="访客">校外访客</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="college-select">所属学院</label>
+                <select id="college-select">
+                    <option value="">-- 请选择学院 --</option>
+                </select>
+            </div>
+            <div class="field">
+                <strong>兴趣倾向</strong>
+                <div class="interest-group" id="interest-group">
+                    <label><input type="checkbox" value="新闻" name="interest"> 新闻资讯</label>
+                    <label><input type="checkbox" value="教务" name="interest"> 选课与教务</label>
+                    <label><input type="checkbox" value="学术" name="interest"> 科研与学术</label>
+                    <label><input type="checkbox" value="综合" name="interest"> 综合</label>
+                </div>
+            </div>
+
+            <button type="submit" class="btn" style="background:#1a73e8;color:#fff;border:none;">保存修改</button>
+            <span id="save-msg" style="margin-left:10px;font-size:14px;"></span>
+        </form>
     </div>
 
     <div class="panel">
@@ -26,9 +73,9 @@
     </div>
 
     <div class="panel danger-zone">
-        <h3 style="color: red;">危险操作</h3>
-        <p>注销账号将触发数据库事务，永久删除您的基础信息、用户偏好配置及检索日志。</p>
-        <button id="delete-account-btn" class="btn btn-danger">彻底注销账号</button>
+        <h3 style="color:#d93025;">危险操作</h3>
+        <p>注销账号将永久删除您的基础信息、偏好配置及检索日志。</p>
+        <button type="button" id="delete-account-btn" class="btn btn-danger">彻底注销账号</button>
     </div>
 
     <script src="js/config.js"></script>

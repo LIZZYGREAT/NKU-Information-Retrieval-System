@@ -26,7 +26,11 @@ const apiClient = {
                 }
                 const detail = data.detail;
                 const msg = Array.isArray(detail)
-                    ? detail.map((d) => d.msg || JSON.stringify(d)).join('; ')
+                    ? detail.map((d) => {
+                        const field = Array.isArray(d.loc) ? d.loc.filter(x => x !== 'body').join('.') : '';
+                        const prefix = field ? `${field}: ` : '';
+                        return prefix + (d.msg || JSON.stringify(d));
+                    }).join('; ')
                     : (detail || data.message || '请求失败');
                 throw new Error(msg);
             }

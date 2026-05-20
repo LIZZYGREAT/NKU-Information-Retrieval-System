@@ -50,3 +50,24 @@ CREATE TABLE `PageLinks` (
     INDEX `idx_source` (`source_url`(255)),
     INDEX `idx_target` (`target_url`(255))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='网页超链接拓扑有向边表';
+
+
+-- 6. 学院域名映射字典表
+-- 作用：存储预设的学院名称与底层检索时需要提权的官方二级域名
+CREATE TABLE `CollegeDomain` (
+    `college_id` INT AUTO_INCREMENT PRIMARY KEY,
+    `college_name` VARCHAR(100) NOT NULL COMMENT '学院名称',
+    `domain_url` VARCHAR(255) NOT NULL COMMENT '映射二级域名',
+    `category` VARCHAR(50) NOT NULL COMMENT '所属大类(如：人文社科类/理工医学类)'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学院域名字典表';
+
+-- 7. 用户静态画像表
+-- 作用：存储用户在冷启动(Onboarding)阶段填写的身份与学院归属
+CREATE TABLE `UserProfile` (
+    `profile_id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT NOT NULL UNIQUE COMMENT '外键，确保与User表1对1关联',
+    `role` ENUM('本科生', '研究生', '教职工', '访客') DEFAULT '访客' COMMENT '身份角色',
+    `college_id` INT NULL COMMENT '外键，关联CollegeDomain表',
+    CONSTRAINT `fk_profile_user` FOREIGN KEY (`user_id`) REFERENCES `User` (`user_id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_profile_college` FOREIGN KEY (`college_id`) REFERENCES `CollegeDomain` (`college_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户静态画像表';

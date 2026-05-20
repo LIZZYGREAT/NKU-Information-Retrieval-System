@@ -26,7 +26,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             await window.auth.register(username, email, password);
-            window.location.href = 'login.html?registered=1';
+            try {
+                await window.auth.login(email, password);
+                window.location.href = 'onboarding.html';
+            } catch {
+                window.location.href = `login.html?registered=1&email=${encodeURIComponent(email)}`;
+            }
         } catch (err) {
             errorEl.textContent = err.message || '注册失败';
             submitBtn.disabled = false;

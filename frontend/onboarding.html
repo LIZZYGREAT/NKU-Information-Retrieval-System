@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>完善信息 - NKU 信息检索系统</title>
+    <link rel="stylesheet" href="css/auth.css">
+    <style>
+        .onboarding-card { max-width: 500px; margin: 40px auto; background: #fff; padding: 32px; border-radius: 8px; box-shadow: 0 1px 6px rgba(32, 33, 36, 0.1); }
+        .form-group { margin-bottom: 20px; text-align: left; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 8px; color: #202124; }
+        .form-control { width: 100%; padding: 10px; border: 1px solid #dfe1e5; border-radius: 4px; box-sizing: border-box; }
+        .checkbox-group { display: flex; flex-wrap: wrap; gap: 10px; }
+        .checkbox-item { display: flex; align-items: center; font-size: 14px; }
+        .checkbox-item input { margin-right: 5px; width: auto; }
+        .btn-group { display: flex; gap: 15px; margin-top: 30px; }
+        .btn-secondary { flex: 1; padding: 12px; font-size: 16px; cursor: pointer; background: #f8f9fa; color: #3c4043; border: 1px solid #dadce0; border-radius: 4px; }
+        .btn-secondary:hover { background: #f1f3f4; }
+    </style>
+</head>
+<body class="auth-page">
+    <div class="onboarding-card">
+        <h2 style="text-align: center; margin-top: 0;">完善搜索画像</h2>
+        <p style="text-align: center; color: #5f6368; font-size: 14px;">提供您的基础信息，以获得更精准的站内排序结果。</p>
+        
+        <div id="error-msg" class="auth-error"></div>
+
+        <form id="onboarding-form">
+            <div class="form-group">
+                <label for="role-select">身份选择</label>
+                <select id="role-select" class="form-control">
+                    <option value="本科生" selected>本科生</option>
+                    <option value="研究生">研究生</option>
+                    <option value="教职工">教职工</option>
+                    <option value="访客">校外访客 (跳过学院选择)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="college-select">所属学院</label>
+                <select id="college-select" class="form-control">
+                    <option value="">-- 请选择学院 --</option>
+                    </select>
+            </div>
+
+            <div class="form-group">
+                <label>初始兴趣领域 (可多选)</label>
+                <div class="checkbox-group" id="interest-group">
+                    <label class="checkbox-item"><input type="checkbox" value="新闻" name="interest"> 新闻资讯</label>
+                    <label class="checkbox-item"><input type="checkbox" value="教务" name="interest"> 选课与教务</label>
+                    <label class="checkbox-item"><input type="checkbox" value="学术" name="interest"> 科研与学术</label>
+                    <label class="checkbox-item"><input type="checkbox" value="综合" name="interest" checked> 综合</label>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button type="button" id="skip-btn" class="btn-secondary">直接跳过</button>
+                <button type="submit" id="submit-btn" class="btn-primary" style="flex: 1;">保存配置</button>
+            </div>
+        </form>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api_client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/onboarding.js"></script>
+</body>
+</html>

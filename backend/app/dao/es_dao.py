@@ -32,7 +32,7 @@ class EsDAO:
             # 站内查询 (site)：默认的基于 IK 分词的全文检索，标题权重翻倍
             return {"multi_match": {"query": query_text, "fields": ["title^2", "content"]}}
 
-    def apply_function_score(self, base_query: Dict[str, Any], weight_factor: float) -> Dict[str, Any]:
+    def apply_function_score(self, base_query: Dict[str, Any], weight_factor: float, preferred_domain: str = None) -> Dict[str, Any]:
         """
         组合文本相关性（BM25）、PageRank静态权威度、时效性高斯衰减以及核心主域特权加权
         """
@@ -72,15 +72,24 @@ class EsDAO:
             }
         ]
 
+        if preferred_domain:
+            functions.append({
+                "filter": {
+                    "prefix": {"url": f"https://{preferred_domain}"}
+                },
+                "weight": 1.5  
+            })
+
         return {
             "function_score": {
                 "query": base_query,
                 "functions": functions,
-                "score_mode": "multiply",   # functions 列表内部各项因子之间采用乘法结合
-                "boost_mode": "multiply",   # 经过 functions 计算后的综合分与原始 BM25 相关性得分相乘
-                "boost": weight_factor      # 承接外层由 MySQL 查出的用户个性化分类偏好系数值
+                "score_mode": "multiply",   
+                "boost_mode": "multiply",   
+                "boost": weight_factor      
             }
         }
+
 
     def execute_search(self, final_query: Dict[str, Any], page: int, size: int = 10) -> Dict[str, Any]:
         """

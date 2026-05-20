@@ -1,7 +1,7 @@
 # backend/app/dao/mysql_dao.py
 import pymysql
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 class MySQLDao:
     def __init__(self, db_config: Dict):
@@ -26,6 +26,16 @@ class MySQLDao:
             with conn.cursor() as cursor:
                 cursor.execute(sql, (username,))
                 return cursor.fetchone()
+    
+
+    def get_user_by_email(self, email: str) -> Optional[Dict]:
+        """根据邮箱获取用户信息及密码摘要，用于登录验证"""
+        sql = "SELECT user_id, username, email, password_hash, role FROM User WHERE email = %s"
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, (email,))
+                return cursor.fetchone()
+
 
     def create_user(self, username: str, email: str, password_hash: str) -> int:
         """
@@ -175,3 +185,111 @@ class MySQLDao:
                 rows = cursor.fetchall()
                 # 组装为哈希表结构加速业务层读取
                 return {row['url']: row['title'] for row in rows}
+
+    # ================= 个性化与静态画像操作 =================
+
+    _INTEREST_CATEGORIES = ('新闻', '教务', '学术', '综合')
+    _INTEREST_ACTIVE_WEIGHT = 1.05
+    _INTEREST_INACTIVE_WEIGHT = 1.0
+
+    def save_onboarding_data(self, user_id: int, role: str, college_id: Optional[int], interests: List[str]) -> bool:
+        """保存冷启动/画像修改：勾选类别提权，未勾选类别重置为默认权重"""
+        conn = self.get_connection()
+        try:
+            conn.begin()
+            with conn.cursor() as cursor:
+                sql_profile = """
+                    INSERT INTO UserProfile (user_id, role, college_id) 
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE role=VALUES(role), college_id=VALUES(college_id)
+                """
+                cursor.execute(sql_profile, (user_id, role, college_id))
+
+                selected = set(interests or [])
+                selected &= set(self._INTEREST_CATEGORIES)
+                if not selected:
+                    selected = {'综合'}
+
+                sql_pref = """
+                    INSERT INTO UserPreference (user_id, category, weight) 
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE weight = VALUES(weight)
+                """
+                for category in self._INTEREST_CATEGORIES:
+                    weight = (
+                        self._INTEREST_ACTIVE_WEIGHT
+                        if category in selected
+                        else self._INTEREST_INACTIVE_WEIGHT
+                    )
+                    cursor.execute(sql_pref, (user_id, category, weight))
+
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            logging.error(f"Onboarding failed for user_id {user_id}. Error: {e}")
+            raise RuntimeError(f"Database transaction failed during onboarding: {str(e)}")
+        finally:
+            conn.close()
+
+    def get_personalization_context(self, user_id: int, query_text: str) -> Dict[str, Any]:
+        """联表提取静态域名提权目标与动态偏好权重"""
+        context = {
+            "weight": 1.0,
+            "preferred_domain": None
+        }
+        category = self._infer_category_from_query(query_text)
+        
+        # 提取动态权重
+        sql_weight = "SELECT weight FROM UserPreference WHERE user_id = %s AND category = %s"
+        # 提取静态域名
+        sql_domain = """
+            SELECT c.domain_url 
+            FROM UserProfile p 
+            LEFT JOIN CollegeDomain c ON p.college_id = c.college_id 
+            WHERE p.user_id = %s
+        """
+        
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                # 1. 查权重
+                cursor.execute(sql_weight, (user_id, category))
+                row_w = cursor.fetchone()
+                if row_w:
+                    context["weight"] = float(row_w['weight'])
+                else:
+                    cursor.execute("SELECT weight FROM UserPreference WHERE user_id = %s AND category = '综合'", (user_id,))
+                    fallback = cursor.fetchone()
+                    context["weight"] = float(fallback['weight']) if fallback else 1.0
+                
+                # 2. 查专属域名
+                cursor.execute(sql_domain, (user_id,))
+                row_d = cursor.fetchone()
+                if row_d and row_d['domain_url']:
+                    context["preferred_domain"] = row_d['domain_url']
+                    
+        return context
+
+
+    def get_user_profile(self, user_id: int) -> Dict[str, Any]:
+        """读取用户的完整静态画像与初始兴趣设定"""
+        profile = {"role": "访客", "college_id": None, "interests": []}
+        
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                # 1. 提取身份与学院
+                cursor.execute("SELECT role, college_id FROM UserProfile WHERE user_id = %s", (user_id,))
+                row = cursor.fetchone()
+                if row:
+                    profile["role"] = row["role"]
+                    profile["college_id"] = row["college_id"]
+                
+                cursor.execute(
+                    "SELECT category FROM UserPreference WHERE user_id = %s AND weight >= %s",
+                    (user_id, self._INTEREST_ACTIVE_WEIGHT),
+                )
+                rows = cursor.fetchall()
+                if rows:
+                    profile["interests"] = [r["category"] for r in rows]
+                    
+        return profile

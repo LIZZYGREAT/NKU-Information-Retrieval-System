@@ -27,21 +27,14 @@ const auth = {
     /**
      * 发起登录请求并持久化状态
      */
-    async login(username, password) {
-        try {
-            const result = await window.apiClient.post('/user/login', {
-                username,
-                password
-            });
-            
-            // 登录成功，将后端返回的用户信息存入 LocalStorage
-            if (result.code === 200 && result.data) {
-                localStorage.setItem('user', JSON.stringify(result.data));
-                return result.data;
-            }
-        } catch (error) {
-            throw error;
-        }
+    async login(email, password) {
+     try {
+         const result = await window.apiClient.post('/user/login', { email, password });
+         if (result.code === 200 && result.data) {
+             localStorage.setItem('user', JSON.stringify(result.data));
+             return result.data;
+         }
+     } catch (error) { throw error; }
     },
 
     /**
@@ -74,6 +67,31 @@ const auth = {
                 this.clearSession();
                 return true;
             }
+        } catch (error) {
+            throw error;
+        }
+    },
+
+    /**
+     * 提交冷启动信息并更新本地缓存
+     */
+    async completeOnboarding(role, collegeId, interests) {
+        const user = this.getUser();
+        if (!user || !user.user_id) throw new Error("无有效的用户登录状态");
+
+        try {
+            const result = await window.apiClient.post('/user/onboarding', {
+                user_id: user.user_id,
+                role: role,
+                college_id: collegeId ? parseInt(collegeId) : null,
+                interests: interests || []
+            });
+            
+            // 更新本地缓存，标记为已完成引导，避免重复跳转
+            user.is_onboarded = true;
+            localStorage.setItem('user', JSON.stringify(user));
+            
+            return result;
         } catch (error) {
             throw error;
         }

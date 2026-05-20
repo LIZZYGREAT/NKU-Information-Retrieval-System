@@ -22,14 +22,18 @@ class SearchService:
         if not query_text or not query_text.strip():
             raise ValueError("Query text cannot be empty")
 
-        # 1. 查询 MySQL 获取个性化权重 (默认系数为 1.0)
+        # 1. 提取多维个性化特征
         weight = 1.0
+        preferred_domain = None
+        
         if user_id:
-            weight = self.mysql_dao.get_user_preference_weight(user_id, query_text)
+            context = self.mysql_dao.get_personalization_context(user_id, query_text)
+            weight = context.get("weight", 1.0)
+            preferred_domain = context.get("preferred_domain")
 
         # 2. 构造 DSL 链路
         base_query = self.es_dao.build_base_query(query_text, search_type)
-        final_query = self.es_dao.apply_function_score(base_query, weight)
+        final_query = self.es_dao.apply_function_score(base_query, weight, preferred_domain)
         
         # 3. 访问 Elasticsearch
         raw_response = self.es_dao.execute_search(final_query, page)
