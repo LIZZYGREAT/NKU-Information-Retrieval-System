@@ -53,3 +53,6 @@ SELECT
 FROM information_schema.TABLES 
 WHERE table_schema = 'nku_search_dev'  
 GROUP BY table_schema;
+
+
+SELECT * FROM WebPageCache WHERE url = 'https://news.nankai.edu.cn/index.shtml';

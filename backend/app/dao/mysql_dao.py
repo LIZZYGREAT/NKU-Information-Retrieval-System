@@ -106,3 +106,23 @@ class MySQLDao:
                 cursor.execute(sql, (url,))
                 result = cursor.fetchone()
                 return result['snapshot_path'] if result else None
+
+    # ================= 管理员拓扑图数据支撑 =================
+
+    def get_all_topology_edges(self) -> List[Dict]:
+        """查询 PageLinks 表，获取爬虫抓取到的全量超链接有向边"""
+        sql = "SELECT source_url, target_url FROM PageLinks"
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+                return cursor.fetchall()
+
+    def get_url_to_title_map(self) -> Dict[str, str]:
+        """查询 WebPageCache 表，建立 URL 到网页标题的映射字典，用于可视化节点标签展示"""
+        sql = "SELECT url, title FROM WebPageCache"
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+                rows = cursor.fetchall()
+                # 组装为哈希表结构加速业务层读取
+                return {row['url']: row['title'] for row in rows}

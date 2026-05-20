@@ -34,27 +34,65 @@ class EsDAO:
 
     def apply_function_score(self, base_query: Dict[str, Any], weight_factor: float) -> Dict[str, Any]:
         """
-        注入个性化权重算分逻辑
+        组合文本相关性（BM25）、PageRank静态权威度、时效性高斯衰减以及核心主域特权加权
         """
-        if weight_factor <= 1.0:
-            return base_query
-            
+        functions = [
+            # 因子 1: PageRank 静态权威度加权
+            {
+                "field_value_factor": {
+                    "field": "pagerank",
+                    "factor": 1.2,
+                    "modifier": "log1p",     # 使用 log1p (ln(1+x)) 算分平滑极值带来的长尾效应
+                    "missing": 0.001
+                }
+            },
+            # 因子 2: 时效性高斯衰减 (Gauss Decay)
+            {
+                "gauss": {
+                    "crawl_time": {
+                        "origin": "now",     # 以当前执行查询的时间为时间原点
+                        "scale": "180d",     # 衰减周期设为180天
+                        "offset": "15d",     # 15天内发布的一手信息完全不衰减权重
+                        "decay": 0.5         # 超过 offset + scale (即195天) 后，时效性权重降为 0.5
+                    }
+                }
+            },
+            # 因子 3: 核心主域特权加权 (Domain Boosting)
+            {
+                "filter": {
+                    "bool": {
+                        "should": [
+                            {"prefix": {"url": "https://www.nankai.edu.cn/"}},   # 南开大学主站门户
+                            {"prefix": {"url": "http://jwc.nankai.edu.cn/"}},     # 教务处一手规章
+                            {"prefix": {"url": "https://graduate.nankai.edu.cn/"}} # 研究生院官方通知
+                        ]
+                    }
+                },
+                "weight": 1.4 
+            }
+        ]
+
         return {
             "function_score": {
                 "query": base_query,
-                "boost": weight_factor,
-                "boost_mode": "multiply" # 将权重与原始 _score 直接相乘
+                "functions": functions,
+                "score_mode": "multiply",   # functions 列表内部各项因子之间采用乘法结合
+                "boost_mode": "multiply",   # 经过 functions 计算后的综合分与原始 BM25 相关性得分相乘
+                "boost": weight_factor      # 承接外层由 MySQL 查出的用户个性化分类偏好系数值
             }
         }
 
     def execute_search(self, final_query: Dict[str, Any], page: int, size: int = 10) -> Dict[str, Any]:
         """
-        执行检索并强制附加 content 的高亮截断配置
+        执行检索并启用标题字段折叠去重，同时附加 content 的高亮截断配置
         """
         body = {
             "query": final_query,
             "from": (page - 1) * size,
             "size": size,
+            "collapse": {
+                "field": "title.keyword"  # 基于标题的 keyword 属性执行折叠
+            },
             "highlight": {
                 "fields": {
                     "content": {
