@@ -7,7 +7,7 @@ from app.dao.mysql_dao import MySQLDao  # 管理员视图查询可直接通过 D
 router = APIRouter(prefix="/api", tags=["Logs & Analytics"])
 
 @router.get("/log/suggestions", response_model=dict)
-async def get_search_suggestions(user_id: int = Query(...), user_service: UserService = Depends()):
+async def get_search_suggestions(user_id: int = Query(...), user_service: UserService = Depends(get_user_service)):
     """
     返回用户近期的 10 条有效搜索记录，供前端自动补全使用
     """
@@ -18,7 +18,7 @@ async def get_search_suggestions(user_id: int = Query(...), user_service: UserSe
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/admin/report")
-async def get_admin_report(mysql_dao: MySQLDao = Depends()):
+async def get_admin_report(mysql_dao: MySQLDao = Depends(get_mysql_dao)):
     """
     供管理员调用：直接查询底层的 View_UserSearchActivity 视图
     """

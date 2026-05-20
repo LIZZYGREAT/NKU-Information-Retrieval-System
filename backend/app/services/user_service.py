@@ -2,6 +2,10 @@
 from werkzeug.security import generate_password_hash, check_password_hash
 from typing import Dict, Any, List
 import logging
+from fastapi import Depends
+
+# 导入底层 DAO
+from app.dao.mysql_dao import MySQLDao
 
 class UserService:
     def __init__(self, mysql_dao):

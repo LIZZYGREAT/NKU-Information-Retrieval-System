@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 
-# 假设全局依赖注入已在 main.py 或 core 中配置
+from app.dependencies import get_search_service
 from app.services.search_service import SearchService
 
 router = APIRouter(prefix="/api", tags=["Search Engine"])
@@ -19,7 +19,7 @@ class SearchRequest(BaseModel):
 # ================= 路由端点 =================
 
 @router.post("/search")
-async def execute_search(request: SearchRequest, search_service: SearchService = Depends()):
+async def execute_search(request: SearchRequest, search_service: SearchService = Depends(get_search_service)):
     """
     接收多模式检索请求，调用 Service 返回清洗与干预后的分页结果
     """
@@ -37,12 +37,11 @@ async def execute_search(request: SearchRequest, search_service: SearchService =
         raise HTTPException(status_code=500, detail=f"Internal Search Error: {str(e)}")
 
 @router.get("/snapshot", response_class=HTMLResponse)
-async def view_snapshot(url: str = Query(..., description="目标网页的原始URL"), search_service: SearchService = Depends()):
+async def view_snapshot(url: str = Query(..., description="目标网页的原始URL"), search_service: SearchService = Depends(get_search_service)):
     """
     根据原始 URL 从 MySQL 映射读取本地快照文件并直接渲染给浏览器
     """
     try:
-        # 直接读取物理路径的 HTML 文本
         html_content = search_service.get_snapshot(url)
         return HTMLResponse(content=html_content, status_code=200)
     except FileNotFoundError as e:

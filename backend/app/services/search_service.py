@@ -1,6 +1,10 @@
 # backend/app/services/search_service.py
 import os
 from typing import Dict, Any
+from fastapi import Depends
+
+from app.dao.mysql_dao import MySQLDao
+from app.dao.es_dao import EsDAO
 
 class SearchService:
     def __init__(self, es_dao, mysql_dao):
