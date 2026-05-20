@@ -6,29 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchType = document.getElementById('search-type');
     const searchBtn = document.getElementById('search-btn');
     const suggestionsList = document.getElementById('suggestions-list');
-    const authSection = document.getElementById('auth-section');
-
-    // 2. 初始化用户状态渲染
-    renderAuthUI();
-
-    function renderAuthUI() {
-        if (window.auth.isLoggedIn()) {
-            const user = window.auth.getUser();
-            authSection.innerHTML = `
-                <span>欢迎, ${user.username}</span>
-                <button onclick="location.href='user_dashboard.html'" style="margin-left: 10px;">用户中心</button>
-                <button id="logout-btn" style="margin-left: 10px;">退出</button>
-            `;
-            document.getElementById('logout-btn').addEventListener('click', () => {
-                window.auth.clearSession();
-                location.reload();
-            });
-        } else {
-            authSection.innerHTML = `
-                <button onclick="alert('此处接入登录弹窗或跳转login.html')">登录/注册</button>
-            `;
-        }
-    }
+    window.renderAuthUI();
 
     // 3. 执行搜索跳转逻辑
     function executeSearch() {

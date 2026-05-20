@@ -1,72 +1,59 @@
-// frontend/js/api_client.js
-
-const BASE_URL = 'http://localhost:8000/api';
+const BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) || '/api';
+const REQUEST_TIMEOUT_MS = 30000;
 
 const apiClient = {
-    /**
-     * 核心请求封装函数
-     * @param {string} endpoint - API 路由端点
-     * @param {object} options - Fetch 配置项
-     * @returns {Promise<any>} 解析后的 JSON 数据
-     */
     async request(endpoint, options = {}) {
         const url = `${BASE_URL}${endpoint}`;
-        
-        // 默认设置 JSON 请求头
         const headers = {
             'Content-Type': 'application/json',
             ...options.headers
         };
-
-        const config = {
-            ...options,
-            headers
-        };
-
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        const config = { ...options, headers, signal: controller.signal };
         try {
             const response = await fetch(url, config);
-            const data = await response.json();
-
-            // 处理 HTTP 错误状态码
-            if (!response.ok) {
-                // 401 权限校验失败拦截
-                if (response.status === 401) {
-                    console.warn("认证失败或凭证过期");
-                    localStorage.removeItem('user'); // 清除本地无效凭证
-                }
-                // 抛出后端返回的错误详情
-                throw new Error(data.detail || data.message || '请求失败');
+            clearTimeout(timer);
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error('服务器响应格式错误');
             }
-
+            if (!response.ok) {
+                if (response.status === 401) {
+                    localStorage.removeItem('user');
+                }
+                const detail = data.detail;
+                const msg = Array.isArray(detail)
+                    ? detail.map((d) => d.msg || JSON.stringify(d)).join('; ')
+                    : (detail || data.message || '请求失败');
+                throw new Error(msg);
+            }
             return data;
         } catch (error) {
+            clearTimeout(timer);
+            if (error.name === 'AbortError') {
+                throw new Error('请求超时，请确认后端服务已启动');
+            }
             console.error(`API Error [${endpoint}]:`, error);
             throw error;
         }
     },
-
-    // GET 请求封装
     get(endpoint) {
         return this.request(endpoint, { method: 'GET' });
     },
-
-    // POST 请求封装
     post(endpoint, body) {
         return this.request(endpoint, {
             method: 'POST',
             body: JSON.stringify(body)
         });
     },
-
-    // DELETE 请求封装
     delete(endpoint, body = null) {
         const options = { method: 'DELETE' };
-        if (body) {
-            options.body = JSON.stringify(body);
-        }
+        if (body) options.body = JSON.stringify(body);
         return this.request(endpoint, options);
     }
 };
 
-// 暴露为全局对象供其他页面脚本调用
 window.apiClient = apiClient;

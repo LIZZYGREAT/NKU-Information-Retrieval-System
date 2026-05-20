@@ -1,5 +1,6 @@
-# backend/app/services/search_service.py
 import os
+import logging
+import threading
 from typing import Dict, Any
 from fastapi import Depends
 from urllib.parse import urlparse
@@ -49,15 +50,24 @@ class SearchService:
                 "score": hit.get("_score")
             })
 
-        # 5. 异步调用 MySQL 写入日志表，不阻塞搜索主流程返回
         if user_id:
-            self.mysql_dao.insert_search_log_async(user_id, query_text, search_type)
+            threading.Thread(
+                target=self._write_search_log_safe,
+                args=(user_id, query_text, search_type),
+                daemon=True,
+            ).start()
 
         return {
             "total_hits": raw_response.get("hits", {}).get("total", {}).get("value", 0),
             "current_page": page,
             "results": parsed_results
         }
+
+    def _write_search_log_safe(self, user_id: int, query_text: str, search_type: str) -> None:
+        try:
+            self.mysql_dao.insert_search_log_async(user_id, query_text, search_type)
+        except Exception as e:
+            logging.warning(f"Search log write failed for user {user_id}: {e}")
 
     def get_snapshot(self, url: str) -> str:
         """

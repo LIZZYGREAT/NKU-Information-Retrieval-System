@@ -6,3 +6,4 @@ snapshots
 *config.py
 .env.dev
 .env.prod
+frontend/js/config.js

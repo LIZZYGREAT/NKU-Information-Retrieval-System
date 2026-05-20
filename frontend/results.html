@@ -42,11 +42,14 @@
     
     <div id="pagination-container" class="pagination"></div>
 
+    <script src="js/config.js"></script>
     <script src="js/api_client.js"></script>
     <script src="js/auth.js"></script>
+    <script src="js/auth_ui.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            window.renderAuthUI();
             const urlParams = new URLSearchParams(window.location.search);
             const currentQuery = urlParams.get('q');
             const currentType = urlParams.get('type') || 'site';
@@ -81,7 +84,7 @@
                     const response = await window.apiClient.post('/search', {
                         query_text: currentQuery,
                         search_type: currentType,
-                        user_id: user ? user.user_id : null,
+                        user_id: user ? Number(user.user_id) : null,
                         page: currentPage
                     });
 
@@ -114,7 +117,7 @@
                     div.className = 'result-item';
                     
                     // 构建网页快照的 URL
-                    const snapshotUrl = `http://localhost:8000/api/snapshot?url=${encodeURIComponent(item.url)}`;
+                    const snapshotUrl = `${window.APP_CONFIG.API_BASE_URL}/snapshot?url=${encodeURIComponent(item.url)}`;
                     
                     // innerHTML 注入 Elasticsearch 的高亮 <em> 标签
                     div.innerHTML = `

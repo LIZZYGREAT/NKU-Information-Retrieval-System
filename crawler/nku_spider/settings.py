@@ -1,17 +1,18 @@
-import os
+import sys
 from pathlib import Path
-from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ENV_TYPE = os.getenv("ENV_TYPE", "dev")
-load_dotenv(PROJECT_ROOT / f".env.{ENV_TYPE}")
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-MYSQL_HOST = os.environ["MYSQL_HOST"]
-MYSQL_USER = os.environ["MYSQL_USER"]
-MYSQL_PASSWORD = os.environ["MYSQL_PASSWORD"]
-MYSQL_DATABASE = os.environ["MYSQL_DATABASE"]
-ES_HOST = os.environ.get("ES_HOST", "http://localhost:9200")
-ES_INDEX_NAME = os.environ["ES_INDEX_NAME"]
+from config.env_settings import settings
+
+MYSQL_HOST = settings.MYSQL_HOST
+MYSQL_USER = settings.MYSQL_USER
+MYSQL_PASSWORD = settings.MYSQL_PASSWORD
+MYSQL_DATABASE = settings.MYSQL_DATABASE
+ES_HOST = settings.ES_HOST
+ES_INDEX_NAME = settings.ES_INDEX_NAME
 
 BOT_NAME = 'nku_spider'
 

@@ -1,8 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // 权限校验拦截
     if (!window.auth.isLoggedIn()) {
-        alert('请先登录');
-        window.location.href = 'index.html';
+        window.location.href = 'login.html?redirect=user_dashboard.html';
         return;
     }
 

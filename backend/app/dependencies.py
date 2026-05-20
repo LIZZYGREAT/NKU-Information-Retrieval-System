@@ -8,7 +8,7 @@ from app.services.search_service import SearchService
 from app.services.user_service import UserService
 
 # 1. 实例化 ES 全局客户端 
-es_client_instance = Elasticsearch(settings.ES_HOST)
+es_client_instance = Elasticsearch(settings.ES_HOST, request_timeout=15, max_retries=2, retry_on_timeout=True)
 
 # 2. 实例化 MySQLDao
 def get_mysql_dao() -> MySQLDao:

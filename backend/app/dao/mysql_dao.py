@@ -73,13 +73,62 @@ class MySQLDao:
 
     # ================= 检索与行为日志支撑 =================
 
-    def insert_search_log_async(self, user_id: int, query_text: str, search_type: str = 'site'):
-        """插入用户的有效搜索记录"""
-        sql = "INSERT INTO SearchLog (user_id, query_text, search_type) VALUES (%s, %s, %s)"
+    _CATEGORY_KEYWORDS = (
+        ('新闻', ('新闻', '校庆', '通知')),
+        ('教务', ('教务', '选课', '成绩', '招生', '规章')),
+        ('学术', ('科研', '论文', '研究生', '学术')),
+    )
+
+    def _infer_category_from_query(self, query_text: str) -> str:
+        text = (query_text or '').strip()
+        for category, keywords in self._CATEGORY_KEYWORDS:
+            if any(kw in text for kw in keywords):
+                return category
+        return '综合'
+
+    def get_user_preference_weight(self, user_id: int, query_text: str) -> float:
+        category = self._infer_category_from_query(query_text)
+        sql = "SELECT weight FROM UserPreference WHERE user_id = %s AND category = %s"
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(sql, (user_id, query_text, search_type))
-                conn.commit()
+                cursor.execute(sql, (user_id, category))
+                row = cursor.fetchone()
+                if row:
+                    return float(row['weight'])
+                cursor.execute(
+                    "SELECT weight FROM UserPreference WHERE user_id = %s AND category = '综合'",
+                    (user_id,),
+                )
+                fallback = cursor.fetchone()
+                return float(fallback['weight']) if fallback else 1.0
+
+    def _drain_cursor(self, cursor) -> None:
+        while True:
+            cursor.fetchall()
+            if not cursor.nextset():
+                break
+
+    def refresh_user_preference(self, user_id: int) -> None:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.callproc('UpdateUserPreference', (user_id,))
+                self._drain_cursor(cursor)
+            conn.commit()
+
+    def insert_search_log_async(self, user_id: int, query_text: str, search_type: str = 'site'):
+        sql = "INSERT INTO SearchLog (user_id, query_text, search_type) VALUES (%s, %s, %s)"
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, (int(user_id), query_text, search_type))
+                try:
+                    cursor.callproc('UpdateUserPreference', (int(user_id),))
+                    self._drain_cursor(cursor)
+                except Exception as e:
+                    logging.warning(f"UpdateUserPreference failed for user {user_id}: {e}")
+            conn.commit()
+        finally:
+            conn.close()
 
     def get_recent_search_logs(self, user_id: int, limit: int = 10) -> List[str]:
         """获取最近的历史搜索记录，用于前端搜索联想词"""
