@@ -12,3 +12,44 @@ INSERT INTO User (username, email, password_hash) VALUES
 INSERT INTO SearchLog (user_id, query_text, search_type) VALUES 
 (1, '南开新闻', 'site'),
 (1, '计算机学院', 'phrase');
+
+
+-- 验证用户是否注入
+SELECT * FROM User; 
+-- 预期输出：存在一行 username='test_user' 的记录
+
+-- 验证网页缓存是否注入
+SELECT * FROM WebPageCache;
+-- 预期输出：存在 2 条 URL 记录
+
+-- 验证搜索日志是否注入
+SELECT * FROM SearchLog;
+-- 预期输出：存在 2 条查询记录
+
+INSERT INTO User (username, email, password_hash) VALUES ('trigger_test', 'test@test.com', 'dummy_hash');
+-- 之后执行：
+SELECT * FROM UserPreference WHERE user_id = LAST_INSERT_ID();
+
+
+CREATE USER IF NOT EXISTS 'dev_user'@'localhost' IDENTIFIED BY 'Qq142536789..';
+
+GRANT ALL PRIVILEGES ON nku_search_dev.* TO 'dev_user'@'localhost';
+
+FLUSH PRIVILEGES;
+
+
+
+-- 统计网页快照表中的总记录数
+SELECT COUNT(*) AS total_pages FROM WebPageCache;
+
+-- 如果你想查看每个用户有多少搜索历史
+SELECT user_id, COUNT(*) AS search_count 
+FROM SearchLog 
+GROUP BY user_id;
+
+SELECT 
+    table_schema AS "Database", 
+    SUM(data_length + index_length) / 1024 / 1024 AS "Size (MB)" 
+FROM information_schema.TABLES 
+WHERE table_schema = 'nku_search_dev'  
+GROUP BY table_schema;

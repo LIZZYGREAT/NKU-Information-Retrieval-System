@@ -1,5 +1,5 @@
-# 核心抓取框架
 Scrapy>=2.11.0
+python-dotenv>=1.0.0
 
 # 关系型数据库驱动
 PyMySQL>=1.1.0
