@@ -58,7 +58,8 @@ CREATE TABLE `CollegeDomain` (
     `college_id` INT AUTO_INCREMENT PRIMARY KEY,
     `college_name` VARCHAR(100) NOT NULL COMMENT '学院名称',
     `domain_url` VARCHAR(255) NOT NULL COMMENT '映射二级域名',
-    `category` VARCHAR(50) NOT NULL COMMENT '所属大类(如：人文社科类/理工医学类)'
+    `category` VARCHAR(50) NOT NULL COMMENT '所属大类(如：人文社科类/理工医学类)',
+    `sub_category` VARCHAR(50) NOT NULL COMMENT '细分学科群(如：信息科学群/数理群)'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学院域名字典表';
 
 -- 7. 用户静态画像表

@@ -2,12 +2,9 @@ import os
 import logging
 import threading
 from typing import Dict, Any
-from fastapi import Depends
 from urllib.parse import urlparse
 from collections import defaultdict
 
-from app.dao.mysql_dao import MySQLDao
-from app.dao.es_dao import EsDAO
 
 class SearchService:
     def __init__(self, es_dao, mysql_dao):
@@ -16,30 +13,18 @@ class SearchService:
         self.snapshot_base_dir = "../backend/snapshots"
 
     def process_search(self, query_text: str, search_type: str, user_id: int = None, page: int = 1) -> Dict[str, Any]:
-        """
-        主搜索流转逻辑
-        """
         if not query_text or not query_text.strip():
             raise ValueError("Query text cannot be empty")
 
-        # 1. 提取多维个性化特征
-        weight = 1.0
-        preferred_domain = None
-        
+        context = None
         if user_id:
             context = self.mysql_dao.get_personalization_context(user_id, query_text)
-            weight = context.get("weight", 1.0)
-            preferred_domain = context.get("preferred_domain")
-            print(f"DEBUG: 当前用户配置权重: {context.get('weight')}, 专属域名: {context.get('preferred_domain')}")
 
-        # 2. 构造 DSL 链路
         base_query = self.es_dao.build_base_query(query_text, search_type)
-        final_query = self.es_dao.apply_function_score(base_query, weight, preferred_domain)
+        first_stage_query, rescore_query = self.es_dao.build_two_stage_query(base_query, context)
         
-        # 3. 访问 Elasticsearch
-        raw_response = self.es_dao.execute_search(final_query, page)
+        raw_response = self.es_dao.execute_search(first_stage_query, rescore_query, page)
         
-        # 4. JSON 结果清洗，抛弃内部元数据，仅向上层提供 url, title 与 高亮 content
         parsed_results = []
         hits = raw_response.get("hits", {}).get("hits", [])
         for hit in hits:
