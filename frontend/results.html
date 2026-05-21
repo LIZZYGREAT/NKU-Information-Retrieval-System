@@ -115,13 +115,18 @@
                 results.forEach(item => {
                     const div = document.createElement('div');
                     div.className = 'result-item';
+                    div.style.position = 'relative'; // 开启相对定位，便于得分徽章定位布局
                     
-                    // 构建网页快照的 URL
                     const snapshotUrl = `${window.APP_CONFIG.API_BASE_URL}/snapshot?url=${encodeURIComponent(item.url)}`;
                     
-                    // innerHTML 注入 Elasticsearch 的高亮 <em> 标签
+                    // 在卡片头部引入左右对齐布局，将综合得分渲染出来
                     div.innerHTML = `
-                        <a href="${item.url}" target="_blank" class="result-title">${item.title || '无标题'}</a>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                            <a href="${item.url}" target="_blank" class="result-title">${item.title || '无标题'}</a>
+                            <span class="score-badge" style="padding: 4px 10px; font-size: 13px; font-weight: bold; border-radius: 4px; border: 1px solid #dfe1e5; background-color: #f8f9fa;">
+                                综合得分: ${item.score}
+                            </span>
+                        </div>
                         <div class="result-meta">
                             ${item.url} 
                             <a href="${snapshotUrl}" target="_blank" style="margin-left: 10px; color: #ff6600; text-decoration: none;">[查看网页快照]</a>

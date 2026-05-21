@@ -233,18 +233,18 @@ class MySQLDao:
             conn.close()
 
     def get_personalization_context(self, user_id: int, query_text: str) -> Dict[str, Any]:
-        """联表提取静态域名提权目标与动态偏好权重"""
         context = {
             "weight": 1.0,
-            "preferred_domain": None
+            "preferred_domain": None,
+            "preferred_category": None,  
+            "sibling_domains": []        
         }
         category = self._infer_category_from_query(query_text)
         
-        # 提取动态权重
         sql_weight = "SELECT weight FROM UserPreference WHERE user_id = %s AND category = %s"
-        # 提取静态域名
+        # 修改静态画像查询，拉取大类字段
         sql_domain = """
-            SELECT c.domain_url 
+            SELECT c.domain_url, c.category 
             FROM UserProfile p 
             LEFT JOIN CollegeDomain c ON p.college_id = c.college_id 
             WHERE p.user_id = %s
@@ -252,21 +252,22 @@ class MySQLDao:
         
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
-                # 1. 查权重
+                # 1. 查动态权重
                 cursor.execute(sql_weight, (user_id, category))
                 row_w = cursor.fetchone()
-                if row_w:
-                    context["weight"] = float(row_w['weight'])
-                else:
-                    cursor.execute("SELECT weight FROM UserPreference WHERE user_id = %s AND category = '综合'", (user_id,))
-                    fallback = cursor.fetchone()
-                    context["weight"] = float(fallback['weight']) if fallback else 1.0
+                context["weight"] = float(row_w['weight']) if row_w else 1.0
                 
-                # 2. 查专属域名
+                # 2. 查静态学院及大类归属
                 cursor.execute(sql_domain, (user_id,))
                 row_d = cursor.fetchone()
                 if row_d and row_d['domain_url']:
                     context["preferred_domain"] = row_d['domain_url']
+                    context["preferred_category"] = row_d['category']
+                    
+                    # 3. 核心泛化：如果是理工类，把数学、物理、人工智能等所有理工类域名打包带走
+                    sql_siblings = "SELECT domain_url FROM CollegeDomain WHERE category = %s"
+                    cursor.execute(sql_siblings, (row_d['category'],))
+                    context["sibling_domains"] = [r['domain_url'] for r in cursor.fetchall()]
                     
         return context
 

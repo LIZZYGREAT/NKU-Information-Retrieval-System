@@ -59,6 +59,7 @@ SELECT * FROM WebPageCache WHERE url = 'https://news.nankai.edu.cn/index.shtml';
 
 TRUNCATE TABLE WebPageCache;
 
+SELECT * FROM UserProfile;
 
 
 -- 注入学院域名映射字典数据

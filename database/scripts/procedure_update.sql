@@ -35,9 +35,13 @@ BEGIN
         SET v_category = '综合';
     END IF;
 
-    INSERT INTO UserPreference (user_id, category, weight)
-    VALUES (p_user_id, v_category, 1.10)
-    ON DUPLICATE KEY UPDATE weight = weight + 0.10;
+    IF v_category != '综合' THEN
+        INSERT INTO UserPreference (user_id, category, weight)
+        VALUES (p_user_id, v_category, 1.05)
+        ON DUPLICATE KEY UPDATE 
+        weight = weight + 0.1 * (2.0 - weight);
+    END IF;
+    
 END //
 
 DELIMITER ;

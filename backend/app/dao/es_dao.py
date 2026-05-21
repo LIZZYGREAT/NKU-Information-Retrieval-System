@@ -32,52 +32,47 @@ class EsDAO:
             # 站内查询 (site)：默认的基于 IK 分词的全文检索，标题权重翻倍
             return {"multi_match": {"query": query_text, "fields": ["title^2", "content"]}}
 
-    def apply_function_score(self, base_query: Dict[str, Any], weight_factor: float, preferred_domain: str = None) -> Dict[str, Any]:
-        """
-        组合文本相关性（BM25）、PageRank静态权威度、时效性高斯衰减以及核心主域特权加权
-        """
+    def apply_function_score(self, base_query: Dict[str, Any], weight_factor: float, 
+                         preferred_domain: str = None, sibling_domains: list = None) -> Dict[str, Any]:
+    
         functions = [
-            # 因子 1: PageRank 静态权威度加权
             {
                 "field_value_factor": {
                     "field": "pagerank",
                     "factor": 1.2,
-                    "modifier": "log1p",     # 使用 log1p (ln(1+x)) 算分平滑极值带来的长尾效应
+                    "modifier": "log1p",
                     "missing": 0.001
                 }
             },
-            # 因子 2: 时效性高斯衰减 (Gauss Decay)
             {
                 "gauss": {
-                    "crawl_time": {
-                        "origin": "now",     # 以当前执行查询的时间为时间原点
-                        "scale": "180d",     # 衰减周期设为180天
-                        "offset": "15d",     # 15天内发布的一手信息完全不衰减权重
-                        "decay": 0.5         # 超过 offset + scale (即195天) 后，时效性权重降为 0.5
+                    "crawl_time": { 
+                        "origin": "now", 
+                        "scale": "180d", 
+                        "offset": "15d", 
+                        "decay": 0.5 
                     }
                 }
-            },
-            # 因子 3: 核心主域特权加权 (Domain Boosting)
-            {
-                "filter": {
-                    "bool": {
-                        "should": [
-                            {"prefix": {"url": "https://www.nankai.edu.cn/"}},   # 南开大学主站门户
-                            {"prefix": {"url": "http://jwc.nankai.edu.cn/"}},     # 教务处一手规章
-                            {"prefix": {"url": "https://graduate.nankai.edu.cn/"}} # 研究生院官方通知
-                        ]
-                    }
-                },
-                "weight": 1.4 
             }
         ]
 
+        # 第一级漏斗（广度关联）：如果用户是理工科，所有理工医学类学院子站的基础分集体拉升
+        if sibling_domains:
+            should_clauses = [{"prefix": {"url": f"https://{dom}"}} for dom in sibling_domains]
+            functions.append({
+                "filter": {
+                    "bool": { "should": should_clauses }
+                },
+                "weight": 2.0  
+            })
+
+        # 第二级漏斗（深度关联）
         if preferred_domain:
             functions.append({
                 "filter": {
                     "prefix": {"url": f"https://{preferred_domain}"}
                 },
-                "weight": 1.5  
+                "weight": 4.5
             })
 
         return {
@@ -85,8 +80,7 @@ class EsDAO:
                 "query": base_query,
                 "functions": functions,
                 "score_mode": "multiply",   
-                "boost_mode": "multiply",   
-                "boost": weight_factor      
+                "boost_mode": "multiply"    
             }
         }
 
@@ -96,11 +90,11 @@ class EsDAO:
         执行检索并启用标题字段折叠去重，同时附加 content 的高亮截断配置
         """
         body = {
-            "query": final_query,
+            "query": final_query, 
             "from": (page - 1) * size,
             "size": size,
             "collapse": {
-                "field": "title.keyword"  # 基于标题的 keyword 属性执行折叠
+                "field": "title.keyword" 
             },
             "highlight": {
                 "fields": {
@@ -120,9 +114,8 @@ class EsDAO:
         """
         body = {
             "query": {"match_all": {}},
-            "size": 5000,  # 满足南开主站及核心学院站点的文档规模
+            "size": 5000,  
             "_source": ["pagerank"]
         }
         res = self.es.search(index=self.index_name, body=body)
-        # 转化为字典结构：{ url: pagerank_score }
         return {hit["_id"]: hit["_source"].get("pagerank", 0.001) for hit in res["hits"]["hits"]}

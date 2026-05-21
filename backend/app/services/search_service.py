@@ -30,6 +30,7 @@ class SearchService:
             context = self.mysql_dao.get_personalization_context(user_id, query_text)
             weight = context.get("weight", 1.0)
             preferred_domain = context.get("preferred_domain")
+            print(f"DEBUG: 当前用户配置权重: {context.get('weight')}, 专属域名: {context.get('preferred_domain')}")
 
         # 2. 构造 DSL 链路
         base_query = self.es_dao.build_base_query(query_text, search_type)
@@ -43,15 +44,16 @@ class SearchService:
         hits = raw_response.get("hits", {}).get("hits", [])
         for hit in hits:
             source = hit.get("_source", {})
-            # 提取高亮片段，若匹配词仅在标题出现导致正文无高亮，则取正文前150字符兜底
             highlight_list = hit.get("highlight", {}).get("content", [])
             highlight_text = highlight_list[0] if highlight_list else source.get("content", "")[:150]
+            
+            total_score = hit.get("_score", 0.0)
             
             parsed_results.append({
                 "url": hit.get("_id"),
                 "title": source.get("title", ""),
                 "highlight": highlight_text,
-                "score": hit.get("_score")
+                "score": round(total_score, 4) 
             })
 
         if user_id:
