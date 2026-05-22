@@ -4,167 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>搜索结果 - 南开大学信息检索系统</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #333; }
-        /* 顶部搜索栏样式 */
-        .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #ebebeb; padding-bottom: 20px; margin-bottom: 20px; }
-        .search-box { display: flex; gap: 10px; align-items: center; }
-        .search-input { width: 400px; padding: 10px; font-size: 16px; border: 1px solid #dfe1e5; border-radius: 24px; outline: none; padding-left: 20px;}
-        .search-input:focus { box-shadow: 0 1px 6px rgba(32,33,36,.28); }
-        .btn { padding: 10px 20px; font-size: 14px; cursor: pointer; background-color: #f8f9fa; border: 1px solid #f8f9fa; border-radius: 4px; color: #3c4043; }
-        .btn:hover { border: 1px solid #dadce0; box-shadow: 0 1px 1px rgba(0,0,0,.1); }
-        
-        /* 搜索结果区样式 */
-        #result-stats { color: #70757a; font-size: 14px; margin-bottom: 15px; }
-        .result-item { margin-bottom: 30px; max-width: 600px; }
-        .result-title { font-size: 20px; color: #1a0dab; text-decoration: none; display: block; margin-bottom: 3px; }
-        .result-title:hover { text-decoration: underline; }
-        .result-meta { font-size: 14px; color: #006621; margin-bottom: 5px; word-break: break-all; }
-        .result-highlight { font-size: 14px; color: #4d5156; line-height: 1.58; }
-        
-        /* Elasticsearch 高亮标签默认是 <em>，我们需要给它加上样式 */
-        em { color: #d93025; font-style: normal; font-weight: bold; }
-        
-        /* 分页区样式 */
-        .pagination { margin-top: 30px; display: flex; gap: 10px; }
-    </style>
+    <link rel="stylesheet" href="css/theme.css">
+    <link rel="stylesheet" href="css/results.css">
 </head>
 <body>
-    <div class="header">
-        <div class="search-box">
-            <input type="text" id="top-search-input" class="search-input" placeholder="输入检索内容..." autocomplete="off">
-            <button id="top-search-btn" class="btn">重新检索</button>
-        </div>
-        <div id="auth-section"></div> </div>
+    <header class="site-header">
+        <a href="index.html" class="site-logo">
+            <span class="site-logo-mark">NKU</span>
+            <span>信息检索系统</span>
+        </a>
+        <div id="auth-section"></div>
+    </header>
 
-    <div id="result-stats"></div>
-    <div id="results-container"></div>
-    
-    <div id="pagination-container" class="pagination"></div>
+    <main class="results-page">
+        <div class="results-toolbar">
+            <input type="text" id="top-search-input" class="search-input" placeholder="输入检索内容..." autocomplete="off">
+            <button type="button" id="top-search-btn" class="btn btn-primary">重新检索</button>
+            <a href="index.html" class="btn">返回首页</a>
+        </div>
+
+        <div id="result-stats"></div>
+        <div id="results-container"></div>
+        <div id="pagination-container"></div>
+    </main>
 
     <script src="js/config.js"></script>
     <script src="js/api_client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/auth_ui.js"></script>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            window.renderAuthUI();
-            const urlParams = new URLSearchParams(window.location.search);
-            const currentQuery = urlParams.get('q');
-            const currentType = urlParams.get('type') || 'site';
-            let currentPage = parseInt(urlParams.get('page')) || 1;
-
-            const topInput = document.getElementById('top-search-input');
-            const searchBtn = document.getElementById('top-search-btn');
-            const container = document.getElementById('results-container');
-            const stats = document.getElementById('result-stats');
-            const pagination = document.getElementById('pagination-container');
-
-            // 初始化搜索框状态
-            if (currentQuery) {
-                topInput.value = currentQuery;
-                fetchResults();
-            }
-
-            // 重新检索绑定
-            searchBtn.addEventListener('click', () => {
-                const newQuery = topInput.value.trim();
-                if (newQuery) {
-                    window.location.href = `results.html?q=${encodeURIComponent(newQuery)}&type=${currentType}&page=1`;
-                }
-            });
-
-            async function fetchResults() {
-                container.innerHTML = '<p>检索中...</p>';
-                const user = window.auth ? window.auth.getUser() : null; // 增加容错保护
-                
-                try {
-                    // 调用后端的 POST /api/search 接口
-                    const response = await window.apiClient.post('/search', {
-                        query_text: currentQuery,
-                        search_type: currentType,
-                        user_id: user ? Number(user.user_id) : null,
-                        page: currentPage
-                    });
-
-                    const data = response.data;
-                    renderResults(data.results, data.total_hits);
-                    renderPagination(data.total_hits);
-                } catch (error) {
-                    // 尝试提取后端详细的 422 报错，否则回退到 error.message 或转储对象
-                    let errMsg = error.message;
-                    if (typeof errMsg === 'object') {
-                        errMsg = JSON.stringify(errMsg);
-                    } else if (error.response && error.response.data && error.response.data.detail) {
-                        errMsg = JSON.stringify(error.response.data.detail);
-                    }
-                    container.innerHTML = `<p style="color:red;">请求失败: ${errMsg}</p>`;
-                }
-            }
-
-            function renderResults(results, totalHits) {
-                stats.textContent = `共找到 ${totalHits} 条结果`;
-                container.innerHTML = '';
-
-                if (!results || results.length === 0) {
-                    container.innerHTML = '<p>未找到匹配内容。</p>';
-                    return;
-                }
-
-                results.forEach(item => {
-                    const div = document.createElement('div');
-                    div.className = 'result-item';
-                    div.style.position = 'relative'; // 开启相对定位，便于得分徽章定位布局
-                    
-                    const snapshotUrl = `${window.APP_CONFIG.API_BASE_URL}/snapshot?url=${encodeURIComponent(item.url)}`;
-                    
-                    // 在卡片头部引入左右对齐布局，将综合得分渲染出来
-                    div.innerHTML = `
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
-                            <a href="${item.url}" target="_blank" class="result-title">${item.title || '无标题'}</a>
-                            <span class="score-badge" style="padding: 4px 10px; font-size: 13px; font-weight: bold; border-radius: 4px; border: 1px solid #dfe1e5; background-color: #f8f9fa;">
-                                综合得分: ${item.score}
-                            </span>
-                        </div>
-                        <div class="result-meta">
-                            ${item.url} 
-                            <a href="${snapshotUrl}" target="_blank" style="margin-left: 10px; color: #ff6600; text-decoration: none;">[查看网页快照]</a>
-                        </div>
-                        <div class="result-highlight">${item.highlight}</div>
-                    `;
-                    container.appendChild(div);
-                });
-            }
-
-            function renderPagination(totalHits) {
-                pagination.innerHTML = '';
-                const pageSize = 10;
-                const totalPages = Math.ceil(totalHits / pageSize);
-                
-                if (totalPages <= 1) return;
-
-                if (currentPage > 1) {
-                    const prev = document.createElement('button');
-                    prev.textContent = '上一页';
-                    prev.className = 'btn';
-                    prev.onclick = () => changePage(currentPage - 1);
-                    pagination.appendChild(prev);
-                }
-
-                if (currentPage < totalPages) {
-                    const next = document.createElement('button');
-                    next.textContent = '下一页';
-                    next.className = 'btn';
-                    next.onclick = () => changePage(currentPage + 1);
-                    pagination.appendChild(next);
-                }
-            }
-
-            function changePage(page) {
-                window.location.href = `results.html?q=${encodeURIComponent(currentQuery)}&type=${currentType}&page=${page}`;
-            }
-        });
-    </script>
+    <script src="js/results.js"></script>
 </body>
 </html>

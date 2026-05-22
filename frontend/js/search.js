@@ -20,8 +20,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     searchBtn.addEventListener('click', executeSearch);
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') executeSearch();
+    searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            executeSearch();
+        }
     });
 
     // 4. 联想词功能实现与防抖控制

@@ -7,3 +7,4 @@ snapshots
 .env.dev
 .env.prod
 frontend/js/config.js
+correct_and_suggestion/
