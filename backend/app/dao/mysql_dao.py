@@ -2,10 +2,20 @@
 import pymysql
 import logging
 from typing import List, Dict, Optional, Any
+from urllib.parse import urlparse
 
 class MySQLDao:
     def __init__(self, db_config: Dict):
         self.config = db_config
+
+    @staticmethod
+    def _normalize_domain(domain_url: str) -> str:
+        if not domain_url:
+            return ""
+        d = domain_url.strip()
+        if "://" not in d:
+            return d.split("/")[0]
+        return urlparse(d).netloc or d
 
     def get_connection(self):
         return pymysql.connect(
@@ -188,32 +198,32 @@ class MySQLDao:
 
     # ================= 个性化与静态画像操作 =================
 
+    _INTEREST_CATEGORIES = ("新闻", "教务", "学术", "综合", "教育")
+
     def save_onboarding_data(self, user_id: int, role: str, college_id: Optional[int], interests: List[str]) -> bool:
-        """保存冷启动信息，保持事务原子性"""
         conn = self.get_connection()
         try:
             conn.begin()
             with conn.cursor() as cursor:
-                # 1. 写入或更新静态画像
-                sql_profile = """
-                    INSERT INTO UserProfile (user_id, role, college_id) 
+                cursor.execute(
+                    """
+                    INSERT INTO UserProfile (user_id, role, college_id)
                     VALUES (%s, %s, %s)
                     ON DUPLICATE KEY UPDATE role=VALUES(role), college_id=VALUES(college_id)
-                """
-                cursor.execute(sql_profile, (user_id, role, college_id))
-
-                # 2. 写入初始兴趣偏好 (兜底权重设为 1.05，略高于系统默认的 1.0)
-                if not interests:
-                    interests = ["综合"]
-                
+                    """,
+                    (user_id, role, college_id),
+                )
+                selected = set(interests or []) & set(self._INTEREST_CATEGORIES)
+                if not selected:
+                    selected = {"综合"}
                 sql_pref = """
-                    INSERT INTO UserPreference (user_id, category, weight) 
-                    VALUES (%s, %s, 1.05)
-                    ON DUPLICATE KEY UPDATE weight=VALUES(weight)
+                    INSERT INTO UserPreference (user_id, category, weight)
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE weight = VALUES(weight)
                 """
-                for category in interests:
-                    cursor.execute(sql_pref, (user_id, category))
-
+                for cat in self._INTEREST_CATEGORIES:
+                    w = 1.05 if cat in selected else 1.0
+                    cursor.execute(sql_pref, (user_id, cat, w))
             conn.commit()
             return True
         except Exception as e:
@@ -223,42 +233,130 @@ class MySQLDao:
         finally:
             conn.close()
 
+    def list_colleges(self) -> List[Dict]:
+        import sys
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[3]
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from config.page_tagger import colleges_as_dicts
+
+        try:
+            sql = """
+                SELECT college_id, college_name, category, sub_category
+                FROM CollegeDomain ORDER BY category, college_id
+            """
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql)
+                    rows = cursor.fetchall()
+                    if rows:
+                        return rows
+        except Exception as e:
+            logging.warning(f"CollegeDomain query failed, use static list: {e}")
+        return colleges_as_dicts()
+
     def get_personalization_context(self, user_id: int, query_text: str) -> Dict[str, Any]:
-        """联表提取静态域名提权目标与动态偏好权重"""
-        context = {
+        import sys
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[3]
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from config.page_tagger import infer_query_category, build_user_tag_weights
+
+        category = infer_query_category(query_text)
+        context: Dict[str, Any] = {
             "weight": 1.0,
-            "preferred_domain": None
+            "query_category": category,
+            "query_text": query_text,
+            "role": "访客",
+            "college_name": None,
+            "preferred_domain": None,
+            "macro_category": None,
+            "sub_category": None,
+            "sibling_colleges_t1": [],
+            "sibling_colleges_t2": [],
+            "sibling_domains_t1": [],
+            "sibling_domains_t2": [],
+            "active_interests": [],
+            "recent_keywords": [],
+            "tag_weights": {},
         }
-        category = self._infer_category_from_query(query_text)
-        
-        # 提取动态权重
-        sql_weight = "SELECT weight FROM UserPreference WHERE user_id = %s AND category = %s"
-        # 提取静态域名
-        sql_domain = """
-            SELECT c.domain_url 
-            FROM UserProfile p 
-            LEFT JOIN CollegeDomain c ON p.college_id = c.college_id 
+
+        sql_profile = """
+            SELECT p.role, c.college_name, c.domain_url, c.category, c.sub_category
+            FROM UserProfile p
+            LEFT JOIN CollegeDomain c ON p.college_id = c.college_id
             WHERE p.user_id = %s
         """
-        
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
-                # 1. 查权重
-                cursor.execute(sql_weight, (user_id, category))
+                cursor.execute(
+                    "SELECT weight FROM UserPreference WHERE user_id = %s AND category = %s",
+                    (user_id, category),
+                )
                 row_w = cursor.fetchone()
                 if row_w:
-                    context["weight"] = float(row_w['weight'])
+                    context["weight"] = float(row_w["weight"])
                 else:
-                    cursor.execute("SELECT weight FROM UserPreference WHERE user_id = %s AND category = '综合'", (user_id,))
-                    fallback = cursor.fetchone()
-                    context["weight"] = float(fallback['weight']) if fallback else 1.0
-                
-                # 2. 查专属域名
-                cursor.execute(sql_domain, (user_id,))
-                row_d = cursor.fetchone()
-                if row_d and row_d['domain_url']:
-                    context["preferred_domain"] = row_d['domain_url']
-                    
+                    cursor.execute(
+                        "SELECT weight FROM UserPreference WHERE user_id = %s AND category = '综合'",
+                        (user_id,),
+                    )
+                    fb = cursor.fetchone()
+                    context["weight"] = float(fb["weight"]) if fb else 1.0
+
+                cursor.execute(sql_profile, (user_id,))
+                row_p = cursor.fetchone()
+                if row_p:
+                    context["role"] = row_p["role"]
+                    context["college_name"] = row_p["college_name"]
+                    context["macro_category"] = row_p["category"]
+                    context["sub_category"] = row_p["sub_category"]
+                    if row_p["domain_url"]:
+                        context["preferred_domain"] = self._normalize_domain(row_p["domain_url"])
+                    if row_p["college_name"] and row_p["domain_url"]:
+                        cursor.execute(
+                            """
+                            SELECT college_name, domain_url FROM CollegeDomain
+                            WHERE sub_category = %s AND domain_url != %s
+                            """,
+                            (row_p["sub_category"], row_p["domain_url"]),
+                        )
+                        for r in cursor.fetchall():
+                            context["sibling_colleges_t1"].append(r["college_name"])
+                            context["sibling_domains_t1"].append(
+                                self._normalize_domain(r["domain_url"])
+                            )
+                        cursor.execute(
+                            """
+                            SELECT college_name, domain_url FROM CollegeDomain
+                            WHERE category = %s AND sub_category != %s
+                            """,
+                            (row_p["category"], row_p["sub_category"]),
+                        )
+                        for r in cursor.fetchall():
+                            context["sibling_colleges_t2"].append(r["college_name"])
+                            context["sibling_domains_t2"].append(
+                                self._normalize_domain(r["domain_url"])
+                            )
+
+                cursor.execute(
+                    "SELECT category FROM UserPreference WHERE user_id = %s AND weight >= %s",
+                    (user_id, 1.05),
+                )
+                context["active_interests"] = [r["category"] for r in cursor.fetchall()]
+
+                cursor.execute(
+                    """
+                    SELECT query_text FROM SearchLog
+                    WHERE user_id = %s ORDER BY search_time DESC LIMIT 5
+                    """,
+                    (user_id,),
+                )
+                context["recent_keywords"] = [r["query_text"] for r in cursor.fetchall()]
+
+        context["tag_weights"] = build_user_tag_weights(context)
         return context
 
 

@@ -1,9 +1,17 @@
 import os
+import sys
+import json
 import hashlib
 import pymysql
+from pathlib import Path
 from elasticsearch import Elasticsearch
 from scrapy.exceptions import DropItem
 import datetime
+
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+from config.page_tagger import tag_page, normalize_title
 
 class SnapshotFilePipeline:
     def __init__(self, storage_path):
@@ -48,15 +56,24 @@ class ElasticSearchPipeline:
         )
 
     def process_item(self, item, spider):
-        # 组装文档，加入时效性时间戳与静态PageRank初值
+        tags = tag_page(
+            item.get("url", ""),
+            item.get("title", "") or "",
+            item.get("content", "") or "",
+        )
+        title = item.get("title") or ""
         es_doc = {
-            "url": item.get('url'),
-            "title": item.get('title'),
-            "content": item.get('content'),
-            "attachments": item.get('attachments', []),
-            "crawl_time": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), # 生成标准UTC时间字符串
-            "pagerank": item.get('pagerank', 0.001) # 默认赋予低权威度基准值，等待离线图算法脚本批量重写
+            "url": item.get("url"),
+            "title": title,
+            "title_norm": normalize_title(title),
+            "content": item.get("content"),
+            "attachments": item.get("attachments", []),
+            "tags": tags,
+            "tags_kw": tags,
+            "crawl_time": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "pagerank": item.get("pagerank", 0.001),
         }
+        item["page_tags"] = tags
 
         try:
             self.es.index(index=self.index_name, id=item['url'], document=es_doc)
@@ -107,17 +124,19 @@ class MySQLPipeline:
             return item
 
         # 1. 写入网页快照缓存表逻辑
+        tags_json = json.dumps(item.get("page_tags") or [], ensure_ascii=False)
         sql_cache = """
-            INSERT INTO WebPageCache (url, title, snapshot_path)
-            VALUES (%s, %s, %s)
+            INSERT INTO WebPageCache (url, title, snapshot_path, tags)
+            VALUES (%s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
-            title = VALUES(title), snapshot_path = VALUES(snapshot_path)
+            title = VALUES(title), snapshot_path = VALUES(snapshot_path), tags = VALUES(tags)
         """
         try:
             self.cursor.execute(sql_cache, (
-                item.get('url'),
-                item.get('title'),
-                item.get('snapshot_path')
+                item.get("url"),
+                item.get("title"),
+                item.get("snapshot_path"),
+                tags_json,
             ))
             self.connection.commit()
         except pymysql.Error as e:

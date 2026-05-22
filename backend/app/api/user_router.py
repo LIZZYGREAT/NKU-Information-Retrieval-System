@@ -74,8 +74,12 @@ async def complete_onboarding(request: OnboardingRequest, user_service: UserServ
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/colleges")
+def list_colleges(user_service: UserService = Depends(get_user_service)):
+    return {"code": 200, "data": user_service.list_colleges()}
+
 @router.get("/profile")
-async def get_profile(user_id: int, user_service: UserService = Depends(get_user_service)):
+def get_profile(user_id: int, user_service: UserService = Depends(get_user_service)):
     try:
         profile = user_service.get_user_profile(user_id)
         return {"code": 200, "data": profile}

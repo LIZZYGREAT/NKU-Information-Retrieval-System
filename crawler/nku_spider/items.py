@@ -8,9 +8,9 @@ class NkuSpiderItem(scrapy.Item):
     content = scrapy.Field()
     attachments = scrapy.Field()
     
-    # 快照处理专用
     raw_html = scrapy.Field()
     snapshot_path = scrapy.Field()
+    page_tags = scrapy.Field()
     
     # 新增：用于 PageRank 拓扑图构建的当前页面出链集合
     out_links = scrapy.Field()

@@ -80,3 +80,6 @@ class UserService:
 
     def get_user_profile(self, user_id: int) -> Dict[str, Any]:
         return self.mysql_dao.get_user_profile(user_id)
+
+    def list_colleges(self) -> List[Dict]:
+        return self.mysql_dao.list_colleges()

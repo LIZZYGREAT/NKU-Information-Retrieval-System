@@ -1,34 +1,26 @@
 {
   "mappings": {
     "properties": {
-      "url": {
-        "type": "keyword"
-      },
+      "url": { "type": "keyword" },
       "title": {
         "type": "text",
         "analyzer": "ik_max_word",
         "search_analyzer": "ik_smart",
-        "fields": {
-          "keyword": {
-            "type": "keyword",
-            "ignore_above": 256
-          }
-        }
+        "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+      },
+      "title_norm": {
+        "type": "keyword"
       },
       "content": {
         "type": "text",
         "analyzer": "ik_max_word",
         "search_analyzer": "ik_smart"
       },
-      "attachments": {
-        "type": "keyword"
-      },
-      "pagerank": {
-        "type": "double"
-      },
-      "crawl_time": {
-        "type": "date"
-      }
+      "attachments": { "type": "keyword" },
+      "pagerank": { "type": "double" },
+      "crawl_time": { "type": "date" },
+      "tags": { "type": "keyword" },
+      "tags_kw": { "type": "keyword" }
     }
   }
 }
