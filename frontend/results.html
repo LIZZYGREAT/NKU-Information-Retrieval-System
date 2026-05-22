@@ -18,7 +18,10 @@
 
     <main class="results-page">
         <div class="results-toolbar">
-            <input type="text" id="top-search-input" class="search-input" placeholder="输入检索内容..." autocomplete="off">
+            <div class="search-input-wrap">
+                <input type="text" id="top-search-input" class="search-input" placeholder="输入检索内容..." autocomplete="off">
+                <ul id="top-suggestions-list" class="suggestions"></ul>
+            </div>
             <button type="button" id="top-search-btn" class="btn btn-primary">重新检索</button>
             <a href="index.html" class="btn">返回首页</a>
         </div>
@@ -32,6 +35,7 @@
     <script src="js/api_client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/auth_ui.js"></script>
+    <script src="js/query_suggest.js"></script>
     <script src="js/results.js"></script>
 </body>
 </html>

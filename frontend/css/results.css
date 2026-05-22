@@ -12,7 +12,8 @@
     box-shadow: var(--shadow);
 }
 
-.results-toolbar .search-input { flex: 1; min-width: 220px; max-width: 480px; }
+.search-input-wrap { position: relative; flex: 1; min-width: 220px; max-width: 480px; }
+.results-toolbar .search-input { width: 100%; }
 
 #result-stats {
     color: var(--text-muted);

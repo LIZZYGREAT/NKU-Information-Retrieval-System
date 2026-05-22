@@ -6,3 +6,5 @@ pymysql>=1.1.0
 elasticsearch>=8.10.0
 werkzeug>=3.0.0
 email-validator>=2.0.0
+rapidfuzz>=3.0.0
+jieba>=0.42.1

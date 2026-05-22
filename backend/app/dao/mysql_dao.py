@@ -150,6 +150,33 @@ class MySQLDao:
         finally:
             conn.close()
 
+    def get_popular_search_queries(self, limit: int = 300) -> List[Dict]:
+        sql = """
+            SELECT query_text, COUNT(*) AS cnt
+            FROM SearchLog
+            GROUP BY query_text
+            ORDER BY cnt DESC
+            LIMIT %s
+        """
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, (limit,))
+                return cursor.fetchall()
+
+    def get_college_names(self) -> List[str]:
+        sql = "SELECT college_name FROM CollegeDomain ORDER BY college_id"
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+                return [r["college_name"] for r in cursor.fetchall() if r.get("college_name")]
+
+    def get_distinct_titles(self, limit: int = 500) -> List[str]:
+        sql = "SELECT DISTINCT title FROM WebPageCache WHERE title IS NOT NULL AND title != '' LIMIT %s"
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, (limit,))
+                return [r["title"] for r in cursor.fetchall() if r.get("title")]
+
     def get_recent_search_logs(self, user_id: int, limit: int = 10) -> List[str]:
         """获取最近的历史搜索记录，用于前端搜索联想词"""
         sql = """

@@ -6,6 +6,7 @@ from app.dao.mysql_dao import MySQLDao
 from app.dao.es_dao import EsDAO
 from app.services.search_service import SearchService
 from app.services.user_service import UserService
+from app.services.query_suggest_service import QuerySuggestService
 
 # 1. 实例化 ES 全局客户端 
 es_client_instance = Elasticsearch(settings.ES_HOST, request_timeout=15, max_retries=2, retry_on_timeout=True)
@@ -36,3 +37,13 @@ def get_user_service(
     mysql_dao: MySQLDao = Depends(get_mysql_dao)
 ) -> UserService:
     return UserService(mysql_dao=mysql_dao)
+
+_query_suggest_instance = None
+
+def get_query_suggest_service() -> QuerySuggestService:
+    global _query_suggest_instance
+    if _query_suggest_instance is None:
+        _query_suggest_instance = QuerySuggestService(
+            correct_engine_url=getattr(settings, "CORRECT_ENGINE_URL", "") or ""
+        )
+    return _query_suggest_instance

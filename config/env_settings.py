@@ -53,6 +53,7 @@ class Settings:
     CORS_ORIGINS: list = [
         o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()
     ]
+    CORRECT_ENGINE_URL: str = os.environ.get("CORRECT_ENGINE_URL", "http://127.0.0.1:8080")
 
 
 settings = Settings()

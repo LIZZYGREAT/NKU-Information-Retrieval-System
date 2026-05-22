@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.href = `results.html?q=${encodeURIComponent(q)}&type=${currentType}&page=${page || 1}`;
     }
 
+    const topSuggestList = document.getElementById('top-suggestions-list');
+
     searchBtn.addEventListener('click', () => goSearch(1));
     topInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -31,6 +33,26 @@ document.addEventListener('DOMContentLoaded', () => {
             goSearch(1);
         }
     });
+
+    function debounce(fn, ms) {
+        let t;
+        return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+    }
+    topInput.addEventListener('input', debounce(async () => {
+        const q = topInput.value.trim();
+        if (!q || !window.fetchQuerySuggestions) return;
+        const user = window.auth && window.auth.getUser ? window.auth.getUser() : null;
+        try {
+            const { suggestions, correction } = await window.fetchQuerySuggestions(q, user ? user.user_id : null);
+            window.renderSuggestionList(topSuggestList, suggestions, correction, (text) => {
+                topInput.value = text;
+                topSuggestList.style.display = 'none';
+                goSearch(1);
+            });
+        } catch (_) {
+            topSuggestList.style.display = 'none';
+        }
+    }, 280));
 
     async function fetchResults() {
         container.innerHTML = '<p class="loading">检索中...</p>';

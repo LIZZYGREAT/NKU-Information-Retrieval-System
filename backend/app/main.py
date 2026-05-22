@@ -1,11 +1,24 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import search_router, user_router, log_router
+from app.api import search_router, user_router, log_router, query_router
 from app.core.config import settings
+from app.dependencies import get_mysql_dao, get_es_dao, get_query_suggest_service
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        get_query_suggest_service().ensure_vocabulary(get_mysql_dao(), get_es_dao())
+    except Exception:
+        pass
+    yield
+
 
 app = FastAPI(
     title="搜索引擎与信息管理系统 API",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -19,6 +32,7 @@ app.add_middleware(
 app.include_router(search_router.router)
 app.include_router(user_router.router)
 app.include_router(log_router.router)
+app.include_router(query_router.router)
 
 @app.get("/")
 async def root():
