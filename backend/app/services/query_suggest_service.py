@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import threading
+from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import quote
 from urllib.request import urlopen
@@ -34,7 +35,7 @@ _CORRECT_SINGLE_TOKEN_SCORE = 93
 _CORRECT_MULTI_TOKEN_SCORE = 96
 _SUGGEST_FUZZY_MIN = 62
 _SUGGEST_TOKEN_FUZZY_MIN = 58
-_SHORT_QUERY_JIEBA_LEN = 12
+_SHORT_QUERY_JIEBA_LEN = 24
 _DEFAULT_EN_ENGINE = "http://127.0.0.1:8080"
 
 
@@ -44,6 +45,8 @@ class QuerySuggestService:
         self._correct_engine_url = url or _DEFAULT_EN_ENGINE
         self._vocab: List[str] = []
         self._vocab_set: Set[str] = set()
+        self._term_freq: Dict[str, int] = defaultdict(int)
+        self._prefix_hits: Dict[str, List[Tuple[str, int]]] = defaultdict(list)
         self._lock = threading.Lock()
         self._loaded = False
 
@@ -55,6 +58,7 @@ class QuerySuggestService:
                 return
             self._vocab = self._build_vocabulary(mysql_dao, es_dao)
             self._vocab_set = set(self._vocab)
+            self._build_prefix_index()
             self._loaded = True
             logging.info("Query vocabulary loaded: %d terms", len(self._vocab))
 
@@ -62,16 +66,30 @@ class QuerySuggestService:
         with self._lock:
             self._vocab = self._build_vocabulary(mysql_dao, es_dao)
             self._vocab_set = set(self._vocab)
+            self._build_prefix_index()
             self._loaded = True
             return len(self._vocab)
+
+    def _build_prefix_index(self) -> None:
+        self._prefix_hits.clear()
+        for term, freq in self._term_freq.items():
+            for i in range(1, min(len(term), 20)):
+                p = term[:i]
+                self._prefix_hits[p].append((term, freq))
+        for p in self._prefix_hits:
+            self._prefix_hits[p].sort(key=lambda x: (-x[1], len(x[0])))
 
     def _build_vocabulary(self, mysql_dao, es_dao=None) -> List[str]:
         seen: Set[str] = set()
         ordered: List[str] = []
+        self._term_freq = defaultdict(int)
 
-        def add(term: str) -> None:
+        def add(term: str, weight: int = 1) -> None:
             t = (term or "").strip()
-            if len(t) < 2 or t in seen:
+            if len(t) < 2:
+                return
+            self._term_freq[t] += weight
+            if t in seen:
                 return
             seen.add(t)
             ordered.append(t)
@@ -89,7 +107,8 @@ class QuerySuggestService:
                 logging.warning("ES frequent titles load failed: %s", e)
         try:
             for row in mysql_dao.get_popular_search_queries(400):
-                add(row["query_text"])
+                cnt = int(row.get("cnt") or 1)
+                add(row["query_text"], cnt)
         except Exception as e:
             logging.warning("popular queries load failed: %s", e)
         try:
@@ -124,6 +143,173 @@ class QuerySuggestService:
     def _use_jieba_path(q: str) -> bool:
         return _CHINESE_RE.search(q) is not None and len(q) <= _SHORT_QUERY_JIEBA_LEN
 
+    def _query_tokens(self, q: str) -> List[str]:
+        if not q:
+            return []
+        if _CHINESE_RE.search(q) and jieba:
+            toks = [w for w in jieba.lcut(q) if len(w.strip()) >= 1]
+            if len(toks) >= 2:
+                return toks
+        return [q]
+
+    def _token_match_score(self, term: str, tokens: List[str], q: str) -> float:
+        if not term:
+            return 0.0
+        if term.startswith(q):
+            return 100.0 + min(len(q), 20)
+        if not tokens:
+            return 0.0
+        joined = "".join(tokens)
+        if joined and term.startswith(joined):
+            return 96.0 + len(joined) * 0.5
+        hit = [t for t in tokens if t in term]
+        if not hit:
+            return 0.0
+        pos = 0
+        ordered = True
+        for t in tokens:
+            idx = term.find(t, pos)
+            if idx < 0:
+                ordered = False
+                break
+            pos = idx + len(t)
+        score = 55.0 + len(hit) * 12.0
+        if len(hit) == len(tokens):
+            score += 18.0
+        if ordered:
+            score += 14.0
+        if len(q) >= 2 and q in term:
+            score += 8.0
+        return score
+
+    def history_suggestions(
+        self,
+        user_id: Optional[int],
+        mysql_dao,
+        limit: int = 8,
+    ) -> List[Dict]:
+        self.ensure_vocabulary(mysql_dao)
+        out: List[Dict] = []
+        seen: Set[str] = set()
+
+        def push(text: str, source: str, score: float) -> None:
+            t = (text or "").strip()
+            if len(t) < 1 or t in seen:
+                return
+            seen.add(t)
+            out.append({"text": t, "source": source, "score": score})
+
+        if user_id:
+            for hist in mysql_dao.get_recent_search_logs(user_id, limit):
+                push(hist, "history", 1.0)
+        need = limit - len(out)
+        if need > 0:
+            try:
+                for row in mysql_dao.get_popular_search_queries(need + 5):
+                    push(row["query_text"], "hot", 0.85)
+                    if len(out) >= limit:
+                        break
+            except Exception:
+                pass
+        for s in _STATIC_SEEDS[: max(0, limit - len(out))]:
+            push(s, "hot", 0.7)
+        return out[:limit]
+
+    def associate(
+        self,
+        prefix: str,
+        user_id: Optional[int],
+        mysql_dao,
+        es_dao=None,
+        limit: int = 8,
+    ) -> Dict:
+        q = (prefix or "").strip()
+        if not q:
+            return {
+                "query": q,
+                "correction": {"original": q, "corrected": q, "changed": False, "candidates": []},
+                "top_completion": None,
+                "continuations": [],
+                "suggestions": [],
+            }
+
+        correction = self.correct(q, mysql_dao, es_dao)
+        suggestions = self.suggest(q, user_id, mysql_dao, es_dao, limit=limit, skip_correct=True)
+        continuations = self._predict_continuations(q, user_id, mysql_dao, limit=limit)
+
+        top = continuations[0] if continuations else None
+        if not top and suggestions:
+            first = suggestions[0]
+            if first["text"].startswith(q) and len(first["text"]) > len(q):
+                top = {
+                    "full": first["text"],
+                    "suffix": first["text"][len(q):],
+                    "source": first["source"],
+                }
+
+        return {
+            "query": q,
+            "correction": correction,
+            "top_completion": top,
+            "continuations": continuations,
+            "suggestions": suggestions,
+        }
+
+    def _predict_continuations(
+        self,
+        q: str,
+        user_id: Optional[int],
+        mysql_dao,
+        limit: int = 8,
+    ) -> List[Dict]:
+        scored: Dict[str, Tuple[float, str]] = {}
+        tokens = self._query_tokens(q)
+
+        def add(full: str, source: str, boost: float = 0.0) -> None:
+            if len(full) <= len(q):
+                return
+            if not (full.startswith(q) or self._token_match_score(full, tokens, q) >= 65):
+                return
+            freq = self._term_freq.get(full, 1)
+            tscore = self._token_match_score(full, tokens, q)
+            score = tscore + freq * 2.0 + boost
+            if full not in scored or scored[full][0] < score:
+                scored[full] = (score, source)
+
+        for term, freq in self._prefix_hits.get(q, [])[:80]:
+            add(term, "continuation", boost=freq * 2)
+
+        if user_id:
+            for hist in mysql_dao.get_recent_search_logs(user_id, 20):
+                if hist.startswith(q) and len(hist) > len(q):
+                    add(hist, "history", boost=50.0)
+                elif self._token_match_score(hist, tokens, q) >= 70:
+                    add(hist, "history", boost=40.0)
+
+        for tok in tokens:
+            for term, freq in self._prefix_hits.get(tok, [])[:35]:
+                add(term, "token", boost=freq + 8.0)
+            last = tokens[-1]
+            head = q[: max(0, len(q) - len(last))]
+            for term, _ in self._prefix_hits.get(last, [])[:30]:
+                add(head + term, "token", boost=10.0)
+
+        if tokens and len(tokens) >= 2:
+            for term in self._vocab:
+                if self._token_match_score(term, tokens, q) >= 75 and len(term) > len(q):
+                    add(term, "token", boost=self._term_freq.get(term, 0))
+
+        ranked = sorted(scored.items(), key=lambda x: -x[1][0])
+        out = []
+        for full, (sc, source) in ranked[:limit]:
+            out.append({
+                "full": full,
+                "suffix": full[len(q):],
+                "source": source,
+                "score": round(sc, 2),
+            })
+        return out
+
     def suggest(
         self,
         prefix: str,
@@ -131,6 +317,7 @@ class QuerySuggestService:
         mysql_dao,
         es_dao=None,
         limit: int = 8,
+        skip_correct: bool = False,
     ) -> List[Dict]:
         self.ensure_vocabulary(mysql_dao, es_dao)
         q = (prefix or "").strip()
@@ -154,34 +341,44 @@ class QuerySuggestService:
 
         if user_id:
             for hist in mysql_dao.get_recent_search_logs(user_id, 15):
-                if hist.startswith(q) or q in hist:
-                    push(hist, "history", 1.0)
+                if hist.startswith(q):
+                    push(hist, "history", 1.0 + (0.05 if len(hist) > len(q) else 0))
 
+        tokens = self._query_tokens(q)
+
+        for term, freq in self._prefix_hits.get(q, [])[:60]:
+            push(term, "continuation", 0.88 + min(freq, 20) * 0.005)
+
+        token_scored: List[Tuple[float, str]] = []
         for term in self._vocab:
+            ts = self._token_match_score(term, tokens, q)
+            if ts >= 60:
+                token_scored.append((ts, term))
+        token_scored.sort(key=lambda x: -x[0])
+        for ts, term in token_scored[: limit * 3]:
             if term.startswith(q):
-                push(term, "prefix", 0.92 - min(len(term) - len(q), 24) * 0.008)
-            elif len(q) >= 2 and q in term:
-                push(term, "contains", 0.78)
+                push(term, "prefix", 0.9 + ts / 200.0)
+            else:
+                push(term, "token", 0.82 + ts / 250.0)
 
-        if self._use_jieba_path(q):
-            tokens = self._jieba_tokens(q)
-            for tok in tokens:
-                if len(tok) < 1:
-                    continue
-                for term in self._vocab:
-                    if term.startswith(tok) and term != q:
-                        push(term, "prefix", 0.85 - min(len(term) - len(tok), 20) * 0.01)
-                for text, sc in self._fuzzy_match(tok, limit * 2, min_score=_SUGGEST_TOKEN_FUZZY_MIN):
-                    if text not in seen:
-                        push(text, "fuzzy", sc / 100.0 * 0.82)
+        for tok in tokens:
+            if len(tok) < 1:
+                continue
+            for term, _ in self._prefix_hits.get(tok, [])[:25]:
+                if term != q:
+                    push(term, "token", 0.86)
+            for text, sc in self._fuzzy_match(tok, limit * 2, min_score=_SUGGEST_TOKEN_FUZZY_MIN):
+                if text not in seen:
+                    push(text, "fuzzy", sc / 100.0 * 0.82)
 
         if len(out) < limit * 2:
             for text, sc in self._fuzzy_match(q, limit * 3, min_score=_SUGGEST_FUZZY_MIN):
                 push(text, "fuzzy", sc / 100.0 * 0.8)
 
-        correction = self.correct(q, mysql_dao, es_dao)
-        if correction["changed"] and correction["corrected"] not in seen:
-            push(correction["corrected"], "correct", 0.72)
+        if not skip_correct:
+            correction = self.correct(q, mysql_dao, es_dao)
+            if correction["changed"] and correction["corrected"] not in seen:
+                push(correction["corrected"], "correct", 0.72)
 
         out.sort(key=lambda x: -x["score"])
         return out[:limit]

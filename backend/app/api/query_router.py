@@ -9,6 +9,36 @@ from app.dao.es_dao import EsDAO
 router = APIRouter(prefix="/api/query", tags=["Query Suggest & Correct"])
 
 
+@router.get("/history")
+def query_history(
+    user_id: Optional[int] = None,
+    limit: int = Query(8, ge=1, le=20),
+    svc: QuerySuggestService = Depends(get_query_suggest_service),
+    mysql_dao: MySQLDao = Depends(get_mysql_dao),
+):
+    try:
+        items = svc.history_suggestions(user_id, mysql_dao, limit=limit)
+        return {"code": 200, "data": {"suggestions": items}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/associate")
+def query_associate(
+    q: str = Query(..., min_length=1),
+    user_id: Optional[int] = None,
+    limit: int = Query(8, ge=1, le=20),
+    svc: QuerySuggestService = Depends(get_query_suggest_service),
+    mysql_dao: MySQLDao = Depends(get_mysql_dao),
+    es_dao: EsDAO = Depends(get_es_dao),
+):
+    try:
+        data = svc.associate(q, user_id, mysql_dao, es_dao, limit=limit)
+        return {"code": 200, "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/suggest")
 def query_suggest(
     q: str = Query(..., min_length=1),
@@ -19,8 +49,8 @@ def query_suggest(
     es_dao: EsDAO = Depends(get_es_dao),
 ):
     try:
-        items = svc.suggest(q, user_id, mysql_dao, es_dao, limit=limit)
-        return {"code": 200, "data": {"query": q, "suggestions": items}}
+        data = svc.associate(q, user_id, mysql_dao, es_dao, limit=limit)
+        return {"code": 200, "data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

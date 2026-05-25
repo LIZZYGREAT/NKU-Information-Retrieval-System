@@ -128,11 +128,52 @@ class MySQLDao:
             if not cursor.nextset():
                 break
 
+    def _update_user_preference_fallback(self, cursor, user_id: int) -> None:
+        sql = """
+            SELECT category FROM (
+                SELECT
+                    CASE
+                        WHEN query_text REGEXP '新闻|校庆|通知' THEN '新闻'
+                        WHEN query_text REGEXP '教务|选课|成绩|招生|规章' THEN '教务'
+                        WHEN query_text REGEXP '科研|论文|研究生|学术' THEN '学术'
+                        ELSE '综合'
+                    END AS category,
+                    COUNT(*) AS cnt,
+                    MAX(search_time) AS last_time
+                FROM SearchLog
+                WHERE user_id = %s
+                GROUP BY category
+                ORDER BY cnt DESC, last_time DESC
+                LIMIT 1
+            ) AS stats
+        """
+        cursor.execute(sql, (user_id,))
+        row = cursor.fetchone()
+        category = (row["category"] if row else None) or "综合"
+        if category != "综合":
+            cursor.execute(
+                """
+                INSERT INTO UserPreference (user_id, category, weight)
+                VALUES (%s, %s, 1.05)
+                ON DUPLICATE KEY UPDATE weight = weight + 0.1 * (2.0 - weight)
+                """,
+                (user_id, category),
+            )
+
+    def _call_update_user_preference(self, cursor, user_id: int) -> None:
+        try:
+            cursor.callproc("UpdateUserPreference", (int(user_id),))
+            self._drain_cursor(cursor)
+        except Exception as e:
+            if getattr(e, "args", (None,))[0] == 1305:
+                self._update_user_preference_fallback(cursor, user_id)
+            else:
+                raise
+
     def refresh_user_preference(self, user_id: int) -> None:
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.callproc('UpdateUserPreference', (user_id,))
-                self._drain_cursor(cursor)
+                self._call_update_user_preference(cursor, user_id)
             conn.commit()
 
     def insert_search_log_async(self, user_id: int, query_text: str, search_type: str = 'site'):
@@ -142,8 +183,7 @@ class MySQLDao:
             with conn.cursor() as cursor:
                 cursor.execute(sql, (int(user_id), query_text, search_type))
                 try:
-                    cursor.callproc('UpdateUserPreference', (int(user_id),))
-                    self._drain_cursor(cursor)
+                    self._call_update_user_preference(cursor, int(user_id))
                 except Exception as e:
                     logging.warning(f"UpdateUserPreference failed for user {user_id}: {e}")
             conn.commit()

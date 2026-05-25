@@ -19,7 +19,8 @@
     <main class="results-page">
         <div class="results-toolbar">
             <div class="search-input-wrap">
-                <input type="text" id="top-search-input" class="search-input" placeholder="输入检索内容..." autocomplete="off">
+                <div id="top-search-ghost" class="search-ghost" aria-hidden="true"></div>
+                <input type="text" id="top-search-input" class="search-input" placeholder="输入检索内容..." autocomplete="off" spellcheck="false">
                 <ul id="top-suggestions-list" class="suggestions"></ul>
             </div>
             <button type="button" id="top-search-btn" class="btn btn-primary">重新检索</button>
@@ -36,6 +37,7 @@
     <script src="js/auth.js"></script>
     <script src="js/auth_ui.js"></script>
     <script src="js/query_suggest.js"></script>
+    <script src="js/suggest_bind.js"></script>
     <script src="js/results.js"></script>
 </body>
 </html>
