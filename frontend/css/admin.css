@@ -1,0 +1,224 @@
+.admin-layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: calc(100vh - 56px);
+}
+
+.admin-sidebar {
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    padding: 16px 0;
+}
+
+.admin-sidebar h3 {
+    margin: 0 16px 12px;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.admin-nav-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 20px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text);
+}
+
+.admin-nav-btn:hover,
+.admin-nav-btn.active {
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.admin-main {
+    padding: 20px 24px;
+    overflow: auto;
+}
+
+.admin-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.admin-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.stat-card {
+    background: var(--card);
+    padding: 14px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.stat-card .num {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.stat-card .lbl {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.admin-table-wrap {
+    overflow: auto;
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.admin-table th,
+.admin-table td {
+    border-bottom: 1px solid var(--border);
+    padding: 10px 12px;
+    text-align: left;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-table th {
+    background: #f8f9fc;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+}
+
+.admin-table tr:hover td {
+    background: #faf8fc;
+}
+
+.row-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.modal-mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modal-box {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 24px;
+    width: min(480px, 92vw);
+    max-height: 85vh;
+    overflow: auto;
+}
+
+.modal-box label {
+    display: block;
+    margin: 10px 0 4px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.modal-box input,
+.modal-box select,
+.modal-box textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-sizing: border-box;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.admin-header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.admin-user-tag {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.admin-select {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--card);
+}
+
+.admin-filter-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 12px;
+    min-height: 0;
+}
+
+.filter-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--primary-light);
+    color: var(--primary);
+    border-radius: 16px;
+    font-size: 12px;
+}
+
+.admin-toolbar-pager {
+    margin-top: 0;
+    padding-top: 0;
+}
+
+.admin-view-desc {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.admin-page-info {
+    margin-right: auto;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.filter-tag button {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: inherit;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+}

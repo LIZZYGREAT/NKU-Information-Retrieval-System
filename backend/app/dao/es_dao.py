@@ -75,7 +75,7 @@ class EsDAO:
         body = {
             "query": self.build_stage1_query(base_query, query_text),
             "size": k,
-            "_source": ["url", "title", "content", "pagerank", "tags_kw", "crawl_time"],
+            "_source": ["url", "title", "content", "pagerank", "tags_kw", "tags_detail", "crawl_time"],
             "highlight": {
                 "fields": {
                     "content": {

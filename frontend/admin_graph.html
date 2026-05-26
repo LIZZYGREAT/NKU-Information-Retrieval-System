@@ -92,7 +92,12 @@
 
     <div class="nav-header">
         <h2>NKU 检索系统 - 站群有向链接拓扑大屏</h2>
-        <a href="index.html" class="btn">返回首页</a>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <a href="admin.html" class="btn">数据管理</a>
+            <a href="admin_views.html" class="btn">数据视图</a>
+            <a href="index.html" class="btn">前台首页</a>
+            <button type="button" class="btn" id="btn-admin-logout">退出管理</button>
+        </div>
     </div>
 
     <div id="graph-container">
@@ -101,6 +106,16 @@
 
     <script src="js/config.js"></script>
     <script src="js/api_client.js"></script>
+    <script src="js/admin_auth.js"></script>
+    <script>
+        if (!window.adminAuth.isLoggedIn()) {
+            location.href = 'admin_login.html';
+        }
+        document.getElementById('btn-admin-logout').onclick = () => {
+            window.adminAuth.logout();
+            location.href = 'admin_login.html';
+        };
+    </script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const colorScale = d3.scaleOrdinal(d3.schemeCategory10);

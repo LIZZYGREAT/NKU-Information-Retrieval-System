@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台</title>
+    <link rel="stylesheet" href="css/theme.css">
+    <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="admin-header-bar" style="width:100%;padding:0 16px;">
+            <a href="admin.html" class="site-logo"><span class="site-logo-mark">ADM</span><span>数据管理后台</span></a>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span class="admin-user-tag" id="admin-user-label"></span>
+                <a href="admin_views.html" class="btn">数据视图</a>
+                <button type="button" class="btn" id="btn-graph">站群拓扑图</button>
+                <button type="button" class="btn" id="btn-user-site">前台首页</button>
+                <button type="button" class="btn" id="btn-user-login">用户登录</button>
+                <button type="button" class="btn btn-primary" id="btn-logout">退出</button>
+            </div>
+        </div>
+    </header>
+    <div class="admin-layout">
+        <aside class="admin-sidebar">
+            <h3>数据表</h3>
+            <nav id="table-nav"></nav>
+            <h3 style="margin-top:20px">分析</h3>
+            <a href="admin_views.html" class="admin-nav-btn">数据视图</a>
+        </aside>
+        <main class="admin-main">
+            <div class="admin-stats" id="stats-row"></div>
+            <div class="admin-toolbar">
+                <input type="search" id="keyword" class="search-input" placeholder="模糊搜索..." style="max-width:200px;">
+                <select id="filter-field" class="admin-select"></select>
+                <select id="filter-op" class="admin-select"></select>
+                <input type="text" id="filter-value" class="search-input" placeholder="筛选值" style="max-width:160px;">
+                <button type="button" class="btn" id="btn-add-filter">添加条件</button>
+                <button type="button" class="btn btn-primary" id="btn-search">查询</button>
+                <button type="button" class="btn" id="btn-clear-filters">清空条件</button>
+                <button type="button" class="btn" id="btn-add">新增记录</button>
+            </div>
+            <div id="filter-tags" class="admin-filter-tags"></div>
+            <div class="admin-toolbar admin-toolbar-pager">
+                <span id="page-info" class="admin-page-info"></span>
+                <button type="button" class="btn" id="btn-prev">上一页</button>
+                <button type="button" class="btn" id="btn-next">下一页</button>
+            </div>
+            <div class="admin-table-wrap">
+                <table class="admin-table" id="data-table">
+                    <thead></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+    <div id="modal-root"></div>
+    <script src="js/config.js"></script>
+    <script src="js/api_client.js"></script>
+    <script src="js/admin_auth.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>

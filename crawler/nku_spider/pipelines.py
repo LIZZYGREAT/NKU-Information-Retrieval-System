@@ -11,7 +11,7 @@ import datetime
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from config.page_tagger import tag_page, normalize_title
+from config.page_tagger import tag_page_enriched, normalize_title
 
 class SnapshotFilePipeline:
     def __init__(self, storage_path):
@@ -56,11 +56,12 @@ class ElasticSearchPipeline:
         )
 
     def process_item(self, item, spider):
-        tags = tag_page(
+        enriched = tag_page_enriched(
             item.get("url", ""),
             item.get("title", "") or "",
             item.get("content", "") or "",
         )
+        tags = enriched["tags_kw"]
         title = item.get("title") or ""
         es_doc = {
             "url": item.get("url"),
@@ -70,10 +71,11 @@ class ElasticSearchPipeline:
             "attachments": item.get("attachments", []),
             "tags": tags,
             "tags_kw": tags,
+            "tags_detail": enriched.get("tags_detail", []),
             "crawl_time": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
             "pagerank": item.get("pagerank", 0.001),
         }
-        item["page_tags"] = tags
+        item["page_tags"] = enriched
 
         try:
             self.es.index(index=self.index_name, id=item['url'], document=es_doc)
@@ -124,7 +126,11 @@ class MySQLPipeline:
             return item
 
         # 1. 写入网页快照缓存表逻辑
-        tags_json = json.dumps(item.get("page_tags") or [], ensure_ascii=False)
+        pt = item.get("page_tags") or {}
+        tags_json = json.dumps(
+            pt.get("tags_detail", pt) if isinstance(pt, dict) else pt,
+            ensure_ascii=False,
+        )
         sql_cache = """
             INSERT INTO WebPageCache (url, title, snapshot_path, tags)
             VALUES (%s, %s, %s, %s)

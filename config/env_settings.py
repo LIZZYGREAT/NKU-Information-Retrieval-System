@@ -22,6 +22,9 @@ def load_env() -> Path:
     if not env_file.exists():
         raise FileNotFoundError(f"环境文件不存在: {env_file}")
     load_dotenv(env_file, override=True)
+    key_file = PROJECT_ROOT / ".env.key"
+    if key_file.exists():
+        load_dotenv(key_file, override=True)
     return env_file
 
 
@@ -54,6 +57,11 @@ class Settings:
         o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()
     ]
     CORRECT_ENGINE_URL: str = os.environ.get("CORRECT_ENGINE_URL", "http://127.0.0.1:8080")
+    DEEPSEEK_API_KEY: str = os.environ.get("DEEPSEEK_API_KEY", "")
+    DEEPSEEK_BASE_URL: str = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    DEEPSEEK_MODEL: str = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
+    TAGGER_MODE: str = os.environ.get("TAGGER_MODE", "hybrid")
+    TAGGER_MIN_CONFIDENCE: float = float(os.environ.get("TAGGER_MIN_CONFIDENCE", "0.55"))
 
 
 settings = Settings()

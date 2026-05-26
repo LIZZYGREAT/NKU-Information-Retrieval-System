@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员登录</title>
+    <link rel="stylesheet" href="css/theme.css">
+    <link rel="stylesheet" href="css/auth.css">
+</head>
+<body class="auth-page">
+    <div class="auth-card">
+        <h2>管理后台登录</h2>
+        <p class="auth-sub">南开大学信息检索系统 · 数据管理</p>
+        <div id="error-msg" class="auth-error"></div>
+        <form id="admin-login-form">
+            <label>账号（用户名或邮箱）</label>
+            <input type="text" id="account" class="form-control" required autocomplete="username">
+            <label>密码</label>
+            <input type="password" id="password" class="form-control" required autocomplete="current-password">
+            <button type="submit" id="submit-btn" class="btn-primary auth-btn">登录</button>
+        </form>
+        <p style="text-align:center;margin-top:16px;font-size:13px;">
+            <a href="login.html">普通用户登录</a> · <a href="index.html">返回首页</a>
+        </p>
+    </div>
+    <script src="js/config.js"></script>
+    <script src="js/api_client.js"></script>
+    <script src="js/admin_auth.js"></script>
+    <script>
+        if (window.adminAuth.isLoggedIn()) location.href = 'admin.html';
+        document.getElementById('admin-login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const err = document.getElementById('error-msg');
+            err.textContent = '';
+            try {
+                await window.adminAuth.login(
+                    document.getElementById('account').value.trim(),
+                    document.getElementById('password').value
+                );
+                location.href = 'admin.html';
+            } catch (ex) {
+                err.textContent = ex.message || '登录失败';
+            }
+        });
+    </script>
+</body>
+</html>

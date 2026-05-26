@@ -1,4 +1,6 @@
 import json
+import logging
+import os
 import re
 from typing import Dict, List, Set, Optional, Tuple
 from urllib.parse import urlparse
@@ -97,7 +99,7 @@ def infer_query_category(query_text: str) -> str:
     return "综合"
 
 
-def tag_page(url: str, title: str = "", content: str = "") -> List[str]:
+def tag_page_rules(url: str, title: str = "", content: str = "") -> List[str]:
     tags: Set[str] = set()
     host = _host(url)
     blob = f"{title or ''} {content or ''}"[:4000]
@@ -120,6 +122,46 @@ def tag_page(url: str, title: str = "", content: str = "") -> List[str]:
         tags.add("topic:综合")
 
     return sorted(tags)
+
+
+def tag_page(url: str, title: str = "", content: str = "") -> List[str]:
+    return tag_page_enriched(url, title, content)["tags_kw"]
+
+
+def tag_page_enriched(url: str, title: str = "", content: str = "") -> Dict:
+    rule_tags = tag_page_rules(url, title, content)
+    min_conf = float(os.environ.get("TAGGER_MIN_CONFIDENCE", "0.55"))
+    mode = os.environ.get("TAGGER_MODE", "hybrid").lower()
+
+    details: Dict[str, Dict] = {}
+    for t in rule_tags:
+        details[t] = {
+            "tag": t,
+            "namespace": t.split(":", 1)[0] if ":" in t else "other",
+            "value": t.split(":", 1)[1] if ":" in t else t,
+            "confidence": 1.0,
+            "source": "rule",
+        }
+
+    if mode in ("llm", "hybrid"):
+        try:
+            from config.llm_page_tagger import llm_available, tag_page_with_llm
+
+            if llm_available():
+                for row in tag_page_with_llm(url, title, content, rule_hints=rule_tags):
+                    tag = row["tag"]
+                    if tag not in details or row["confidence"] > details[tag]["confidence"]:
+                        details[tag] = row
+        except Exception as e:
+            logging.getLogger(__name__).warning("LLM tagger skipped: %s", e)
+
+    tags_kw = sorted(
+        t for t, d in details.items() if d["confidence"] >= min_conf
+    )
+    return {
+        "tags_kw": tags_kw,
+        "tags_detail": sorted(details.values(), key=lambda x: -x["confidence"]),
+    }
 
 
 def build_user_tag_weights(context: Optional[Dict]) -> Dict[str, float]:

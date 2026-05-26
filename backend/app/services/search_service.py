@@ -106,7 +106,7 @@ class SearchService:
                 "title": source.get("title", ""),
                 "highlight": highlight_text,
                 "score": round(hit.get("_final_score", hit.get("_score", 0.0)), 4),
-                "tags": self._format_tags_for_display(tags_raw),
+                "tags": self._format_tags_for_display(tags_raw, source.get("tags_detail")),
             })
 
 
@@ -358,9 +358,22 @@ class SearchService:
 
 
     @staticmethod
-    def _format_tags_for_display(tags: List) -> List[Dict[str, str]]:
+    def _format_tags_for_display(tags, tags_detail=None) -> List[Dict[str, str]]:
         out = []
-        for tag in tags:
+        if tags_detail and isinstance(tags_detail, list):
+            for row in sorted(tags_detail, key=lambda x: -float(x.get("confidence", 0)))[:8]:
+                if not isinstance(row, dict):
+                    continue
+                conf = row.get("confidence")
+                label = row.get("value") or row.get("tag", "")
+                ns = row.get("namespace", "topic")
+                if conf is not None and conf < 0.55:
+                    continue
+                suffix = f" {int(conf * 100)}%" if conf is not None else ""
+                out.append({"type": ns, "label": f"{label}{suffix}"})
+            if out:
+                return out[:8]
+        for tag in tags or []:
             if not tag or not isinstance(tag, str):
                 continue
             if tag.startswith("college:"):
@@ -371,7 +384,10 @@ class SearchService:
                 out.append({"type": "group", "label": tag[6:]})
             elif tag.startswith("topic:"):
                 out.append({"type": "topic", "label": tag[6:]})
-        return out[:6]
+            elif ":" in tag:
+                ns, val = tag.split(":", 1)
+                out.append({"type": ns, "label": val})
+        return out[:8]
 
     @staticmethod
     def _dedupe_key(title: str, url: str) -> str:

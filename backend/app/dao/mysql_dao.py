@@ -31,7 +31,7 @@ class MySQLDao:
 
     def get_user_by_username(self, username: str) -> Optional[Dict]:
         """根据用户名获取用户信息及密码摘要"""
-        sql = "SELECT user_id, username, password_hash, role FROM User WHERE username = %s"
+        sql = "SELECT user_id, username, email, password_hash, role FROM User WHERE username = %s"
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, (username,))

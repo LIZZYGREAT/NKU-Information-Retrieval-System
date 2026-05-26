@@ -23,6 +23,7 @@ const apiClient = {
             if (!response.ok) {
                 if (response.status === 401) {
                     localStorage.removeItem('user');
+                    localStorage.removeItem('admin');
                 }
                 const detail = data.detail;
                 const msg = Array.isArray(detail)
@@ -53,11 +54,25 @@ const apiClient = {
             body: JSON.stringify(body)
         });
     },
+    put(endpoint, body) {
+        return this.request(endpoint, {
+            method: 'PUT',
+            body: JSON.stringify(body),
+        });
+    },
     delete(endpoint, body = null) {
         const options = { method: 'DELETE' };
         if (body) options.body = JSON.stringify(body);
         return this.request(endpoint, options);
-    }
+    },
+    adminRequest(endpoint, options = {}) {
+        const admin = window.adminAuth && window.adminAuth.getAdmin();
+        if (!admin) throw new Error('未登录管理后台');
+        return this.request(endpoint, {
+            ...options,
+            headers: { 'X-Admin-Id': String(admin.user_id), ...(options.headers || {}) },
+        });
+    },
 };
 
 window.apiClient = apiClient;

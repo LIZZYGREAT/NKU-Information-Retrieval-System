@@ -20,7 +20,8 @@
       "pagerank": { "type": "double" },
       "crawl_time": { "type": "date" },
       "tags": { "type": "keyword" },
-      "tags_kw": { "type": "keyword" }
+      "tags_kw": { "type": "keyword" },
+      "tags_detail": { "type": "object", "enabled": false }
     }
   }
 }
