@@ -9,3 +9,4 @@ snapshots
 .env.key.example
 frontend/js/config.js
 correct_and_suggestion/
+*zip

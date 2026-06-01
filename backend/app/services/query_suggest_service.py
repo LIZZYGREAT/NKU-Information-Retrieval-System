@@ -1,3 +1,20 @@
+"""
+查询建议服务，负责搜索联想、拼写纠错和查询补全功能
+
+主要功能：
+1. 查询联想：根据用户输入提供搜索建议
+2. 拼写纠错：自动修正输入错误
+3. 查询补全：预测用户可能的完整查询
+4. 历史记录：结合用户搜索历史提供个性化建议
+
+调用链：
+search_router -> QuerySuggestService -> (mysql_dao, es_dao)
+
+依赖：
+- rapidfuzz: 模糊匹配算法（可选，降级使用difflib）
+- jieba: 中文分词（可选）
+"""
+
 import json
 import logging
 import re
@@ -21,36 +38,66 @@ try:
 except ImportError:
     jieba = None
 
+# 静态种子词：系统内置的常用搜索词
 _STATIC_SEEDS = (
     "南开大学", "南开", "数学科学学院", "历史学院", "计算机学院", "教务处",
     "新闻", "通知公告", "选课", "研究生", "科研", "学院概况", "联系我们",
 )
 
+# 正则表达式：检测英文和中文
 _ENGLISH_RE = re.compile(r"^[\x00-\x7f\s\-_'.,!?]+$")
 _CHINESE_RE = re.compile(r"[\u4e00-\u9fff]")
 
-# 纠错保守 / 补全激进
-_CORRECT_APPLY_SCORE = 94
-_CORRECT_SINGLE_TOKEN_SCORE = 93
-_CORRECT_MULTI_TOKEN_SCORE = 96
-_SUGGEST_FUZZY_MIN = 62
-_SUGGEST_TOKEN_FUZZY_MIN = 58
-_SHORT_QUERY_JIEBA_LEN = 24
-_DEFAULT_EN_ENGINE = "http://127.0.0.1:8080"
+# 纠错和建议的阈值配置
+_CORRECT_APPLY_SCORE = 94          # 纠错应用阈值
+_CORRECT_SINGLE_TOKEN_SCORE = 93   # 单分词纠错阈值
+_CORRECT_MULTI_TOKEN_SCORE = 96    # 多分词纠错阈值
+_SUGGEST_FUZZY_MIN = 62            # 建议模糊匹配最低分
+_SUGGEST_TOKEN_FUZZY_MIN = 58      # 分词建议模糊匹配最低分
+_SHORT_QUERY_JIEBA_LEN = 24        # 使用结巴分词的最大查询长度
+_DEFAULT_EN_ENGINE = "http://127.0.0.1:8080"  # 英文建议引擎地址
 
 
 class QuerySuggestService:
+    """
+    查询建议服务类，提供搜索联想、拼写纠错和查询补全功能
+    
+    核心数据结构：
+    - _vocab: 词汇表列表
+    - _vocab_set: 词汇表集合（用于快速查找）
+    - _term_freq: 词频统计字典
+    - _prefix_hits: 前缀索引，用于快速前缀匹配
+    
+    线程安全：使用_lock保证词汇表加载的线程安全
+    """
+
     def __init__(self, correct_engine_url: str = ""):
+        """
+        初始化查询建议服务
+        
+        :param correct_engine_url: 英文拼写纠错引擎URL（可选）
+        """
         url = (correct_engine_url or "").strip().rstrip("/")
         self._correct_engine_url = url or _DEFAULT_EN_ENGINE
-        self._vocab: List[str] = []
-        self._vocab_set: Set[str] = set()
-        self._term_freq: Dict[str, int] = defaultdict(int)
-        self._prefix_hits: Dict[str, List[Tuple[str, int]]] = defaultdict(list)
-        self._lock = threading.Lock()
-        self._loaded = False
+        self._vocab: List[str] = []        # 词汇表
+        self._vocab_set: Set[str] = set()  # 词汇集合（快速查找）
+        self._term_freq: Dict[str, int] = defaultdict(int)  # 词频统计
+        self._prefix_hits: Dict[str, List[Tuple[str, int]]] = defaultdict(list)  # 前缀索引
+        self._lock = threading.Lock()      # 线程锁
+        self._loaded = False               # 词汇表是否已加载
 
     def ensure_vocabulary(self, mysql_dao, es_dao=None) -> None:
+        """
+        确保词汇表已加载（懒加载）
+        
+        :param mysql_dao: MySQL数据访问对象
+        :param es_dao: Elasticsearch数据访问对象（可选）
+        
+        线程安全的懒加载机制：
+        1. 检查是否已加载
+        2. 获取锁后再次检查（双重检查锁定）
+        3. 构建词汇表和前缀索引
+        """
         if self._loaded:
             return
         with self._lock:
@@ -63,6 +110,13 @@ class QuerySuggestService:
             logging.info("Query vocabulary loaded: %d terms", len(self._vocab))
 
     def reload_vocabulary(self, mysql_dao, es_dao=None) -> int:
+        """
+        重新加载词汇表
+        
+        :param mysql_dao: MySQL数据访问对象
+        :param es_dao: Elasticsearch数据访问对象（可选）
+        :return: 词汇表大小
+        """
         with self._lock:
             self._vocab = self._build_vocabulary(mysql_dao, es_dao)
             self._vocab_set = set(self._vocab)
@@ -71,11 +125,18 @@ class QuerySuggestService:
             return len(self._vocab)
 
     def _build_prefix_index(self) -> None:
+        """
+        构建前缀索引
+        
+        为每个词的所有前缀（1到20字符）建立索引，
+        支持快速前缀匹配查询补全功能。
+        """
         self._prefix_hits.clear()
         for term, freq in self._term_freq.items():
             for i in range(1, min(len(term), 20)):
                 p = term[:i]
                 self._prefix_hits[p].append((term, freq))
+        # 按词频降序、长度升序排序
         for p in self._prefix_hits:
             self._prefix_hits[p].sort(key=lambda x: (-x[1], len(x[0])))
 
