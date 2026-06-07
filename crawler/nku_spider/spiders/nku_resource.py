@@ -61,7 +61,7 @@ class NankaiSpider(scrapy.Spider):
         'https://eco.nankai.edu.cn/',             # 经济学院
         'https://finance.nankai.edu.cn/',         # 金融学院
         
-        # 6. 教务、科研与行政服务（获取文档附件和规章制度的主力）
+        # 6. 教务、科研与行政服务（获取文档附件和规章制度）
         'http://jwc.nankai.edu.cn/',              # 教务处
         'https://graduate.nankai.edu.cn/',        # 研究生院
         'https://kyb.nankai.edu.cn/',             # 科学技术研究部

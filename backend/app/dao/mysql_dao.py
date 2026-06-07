@@ -80,8 +80,8 @@ class MySQLDao:
         sql = "SELECT user_id, username, email, password_hash, role FROM User WHERE username = %s"
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(sql, (username,))
-                return cursor.fetchone()
+                cursor.execute(sql, (username,))    #默认返回元组，所以需要用(username,)
+                return cursor.fetchone()            #会进行转义处理，解决SQL注入
 
 
     def get_user_by_email(self, email: str) -> Optional[Dict]:
@@ -115,9 +115,9 @@ class MySQLDao:
         sql = "INSERT INTO User (username, email, password_hash) VALUES (%s, %s, %s)"
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(sql, (username, email, password_hash))
-                conn.commit()
-                return cursor.lastrowid
+                cursor.execute(sql, (username, email, password_hash))   #该插入操作只在内存上执行
+                conn.commit()             #落盘到磁盘内
+                return cursor.lastrowid   #用于获取自增后的uid
 
     def delete_user_transactionally(self, user_id: int) -> bool:
         """
@@ -128,41 +128,39 @@ class MySQLDao:
         
         事务流程：
         1. 显式开启事务
-        2. 删除 UserPreference 表中的用户偏好（外键依赖）
-        3. 删除 SearchLog 表中的搜索日志（外键依赖）
-        4. 删除 User 表中的用户记录（主表）
-        5. 提交事务
+        2. 删除 UserPreference 表中的用户偏好
+        3. 删除 SearchLog 表中的搜索日志
+        4. 删除 UserProfile 表中的用户画像
+        5. 删除 User 表中的用户记录（主表）
+        6. 提交事务
         
         任何步骤失败都会触发回滚，保证数据一致性
+        
+        注意：虽然数据库外键已配置 ON DELETE CASCADE，
+        但此处显式删除以提高代码可读性和健壮性
         """
         conn = self.get_connection()
         try:
-            # 1. 显式开启事务
-            conn.begin()
-            
+            conn.begin()    #此处可以不显示删除UserPreference,Searchlog,UserProfile，设置了级联。
             with conn.cursor() as cursor:
-                # 2. 删除外键依赖表 1：UserPreference
+                # 2. 删除用户偏好表
                 cursor.execute("DELETE FROM UserPreference WHERE user_id = %s", (user_id,))
-                
-                # 3. 删除外键依赖表 2：SearchLog
+                # 3. 删除搜索日志表
                 cursor.execute("DELETE FROM SearchLog WHERE user_id = %s", (user_id,))
-                
-                # 4. 删除主表：User
+                # 4. 删除用户画像表
+                cursor.execute("DELETE FROM UserProfile WHERE user_id = %s", (user_id,))
+                # 5. 删除主表：User
                 cursor.execute("DELETE FROM User WHERE user_id = %s", (user_id,))
             
-            # 5. 若上述无异常，提交事务
             conn.commit()
             return True
             
         except Exception as e:
-            # 6. 捕获任何SQL执行异常，立即回滚，保证原子性
             conn.rollback()
             logging.error(f"Transaction failed for user_id {user_id}. Rolled back. Error: {e}")
             raise RuntimeError("Database transaction failed during user deletion")
         finally:
             conn.close()
-
-    # ================= 检索与行为日志支撑 =================
 
     # 查询分类关键词映射表，用于推断查询所属类别
     _CATEGORY_KEYWORDS = (
@@ -173,7 +171,7 @@ class MySQLDao:
 
     def _infer_category_from_query(self, query_text: str) -> str:
         """
-        根据查询文本推断所属分类
+        根据查询文本实现简单的推断所属分类
         
         :param query_text: 查询文本
         :return: 分类名称（新闻/教务/学术/综合）
@@ -206,7 +204,6 @@ class MySQLDao:
                 row = cursor.fetchone()
                 if row:
                     return float(row['weight'])
-                # 兜底：查询"综合"分类的权重
                 cursor.execute(
                     "SELECT weight FROM UserPreference WHERE user_id = %s AND category = '综合'",
                     (user_id,),
@@ -265,7 +262,7 @@ class MySQLDao:
                 ON DUPLICATE KEY UPDATE weight = weight + 0.1 * (2.0 - weight)
                 """,
                 (user_id, category),
-            )
+            )    #不存在即插入，存在即更新
 
     def _call_update_user_preference(self, cursor, user_id: int) -> None:
         """
@@ -274,10 +271,10 @@ class MySQLDao:
         :param cursor: 数据库游标
         :param user_id: 用户ID
         
-        若存储过程不存在（错误码1305），则调用降级方案
+        若存储过程不存在，则调用降级方案
         """
         try:
-            cursor.callproc("UpdateUserPreference", (int(user_id),))
+            cursor.callproc("UpdateUserPreference", (int(user_id),))  #调用数据库过程
             self._drain_cursor(cursor)
         except Exception as e:
             if getattr(e, "args", (None,))[0] == 1305:
@@ -336,7 +333,7 @@ class MySQLDao:
             GROUP BY query_text
             ORDER BY cnt DESC
             LIMIT %s
-        """
+        """     #COUNT(*)进行统计每组的记录数
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, (limit,))
@@ -463,7 +460,7 @@ class MySQLDao:
         try:
             conn.begin()
             with conn.cursor() as cursor:
-                # 插入/更新用户画像
+                # 插入/更新用户画像   此处的VALUES函数是为了更新新值
                 cursor.execute(
                     """
                     INSERT INTO UserProfile (user_id, role, college_id)

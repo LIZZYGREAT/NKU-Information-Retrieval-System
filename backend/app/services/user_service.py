@@ -152,7 +152,7 @@ class UserService:
             role = "访客"
             college_id = None
         
-        # 访客角色强制无学院归属
+        # 访客角色为无学院归属
         if role == "访客":
             college_id = None
             
