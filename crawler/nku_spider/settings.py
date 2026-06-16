@@ -49,4 +49,6 @@ SNAPSHOT_STORAGE_PATH = '../backend/snapshots'
 
 CRAWL_TAGGER_MODE = settings.CRAWL_TAGGER_MODE
 
+JOBDIR = 'crawl_jobs/nankai_main'
+
 FEED_EXPORT_ENCODING = 'utf-8'

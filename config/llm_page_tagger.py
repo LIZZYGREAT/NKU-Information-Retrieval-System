@@ -3,8 +3,11 @@ import json
 import logging
 import os
 import re
+import ssl
+import threading
 import time
 from typing import Any, Dict, List, Optional
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from config.tag_taxonomy import (
@@ -19,6 +22,8 @@ from config.tag_taxonomy import (
 
 _CACHE: Dict[str, Dict] = {}
 _LAST_CALL = 0.0
+_API_LOCK = threading.Lock()
+_log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """你是南开大学站内网页分类助手。根据 URL、标题与正文摘要，输出结构化标签与置信度。
 
@@ -98,11 +103,10 @@ def _throttle(interval: float) -> None:
     _LAST_CALL = time.time()
 
 
-def _call_deepseek(user_prompt: str, system: Optional[str] = None) -> str:
+def _call_deepseek(user_prompt: str, system: Optional[str] = None, timeout: int = 120) -> str:
     cfg = _load_llm_config()
     if not cfg["api_key"]:
         raise RuntimeError("DEEPSEEK_API_KEY missing，请在 .env.key 中配置")
-    _throttle(cfg["interval_sec"])
     payload = {
         "model": cfg["model"],
         "messages": [
@@ -113,18 +117,31 @@ def _call_deepseek(user_prompt: str, system: Optional[str] = None) -> str:
         "stream": False,
         "response_format": {"type": "json_object"},
     }
-    req = Request(
-        f"{cfg['base_url']}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {cfg['api_key']}",
-        },
-        method="POST",
-    )
-    with urlopen(req, timeout=90) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-    return data["choices"][0]["message"]["content"]
+    url = f"{cfg['base_url']}/chat/completions"
+    body = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {cfg['api_key']}",
+    }
+    ctx = ssl.create_default_context()
+    last_err = None
+    for attempt in range(3):
+        try:
+            with _API_LOCK:
+                _throttle(cfg["interval_sec"])
+                req = Request(url, data=body, headers=headers, method="POST")
+                with urlopen(req, timeout=timeout, context=ctx) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not content:
+                raise ValueError("API 返回空内容")
+            return content
+        except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError, KeyError) as e:
+            last_err = e
+            wait = 1.5 * (attempt + 1)
+            _log.warning("DeepSeek 调用失败(%s/%s): %s，%.1fs 后重试", attempt + 1, 3, e, wait)
+            time.sleep(wait)
+    raise RuntimeError(f"DeepSeek 调用失败: {last_err}")
 
 
 def _parse_llm_json(raw: str) -> List[Dict[str, Any]]:

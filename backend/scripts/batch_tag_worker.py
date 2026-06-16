@@ -3,13 +3,14 @@ import json
 import os
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List
 from urllib.parse import urlparse
 
 import pymysql
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, BadRequestError
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -25,8 +26,8 @@ load_env()
 PENDING_QUERY = {
     "bool": {
         "should": [
-            {"term": {"tag_status": "pending"}},
-            {"term": {"tag_status": "rule_only"}},
+            {"match": {"tag_status": "pending"}},
+            {"match": {"tag_status": "rule_only"}},
             {"bool": {"must_not": {"exists": {"field": "tag_status"}}}},
         ],
         "minimum_should_match": 1,
@@ -35,6 +36,8 @@ PENDING_QUERY = {
 
 _template_cache: Dict[str, Dict] = {}
 _template_lock = threading.Lock()
+_stats = {"llm_fail": 0, "skipped": 0, "cached": 0}
+_stats_lock = threading.Lock()
 
 
 def _template_key(hit: Dict) -> str:
@@ -93,6 +96,8 @@ def process_batch(es: Elasticsearch, index: str, hits: List[Dict]) -> int:
             cached = _template_cache.get(tkey)
         if cached:
             _apply(es, index, hit, cached)
+            with _stats_lock:
+                _stats["cached"] += 1
             done += 1
             continue
         pf = src.get("page_features") or {
@@ -107,12 +112,23 @@ def process_batch(es: Elasticsearch, index: str, hits: List[Dict]) -> int:
         pending_hits.append(hit)
 
     if not pending_hits:
+        with _stats_lock:
+            _stats["skipped"] += len(hits) - done
         return done
 
-    try:
-        llm_map = tag_pages_batch_with_llm(pending_features)
-    except Exception as e:
-        print(f"LLM 批次失败: {e}")
+    llm_map = None
+    last_err = None
+    for attempt in range(3):
+        try:
+            llm_map = tag_pages_batch_with_llm(pending_features)
+            break
+        except Exception as e:
+            last_err = e
+            time.sleep(2 * (attempt + 1))
+    if llm_map is None:
+        print(f"LLM 批次失败(重试3次): {last_err}")
+        with _stats_lock:
+            _stats["llm_fail"] += 1
         return done
 
     for idx, hit in enumerate(pending_hits):
@@ -125,6 +141,26 @@ def process_batch(es: Elasticsearch, index: str, hits: List[Dict]) -> int:
     return done
 
 
+def _ensure_mapping(es: Elasticsearch, index: str):
+    existing = {}
+    try:
+        m = es.indices.get_mapping(index=index)
+        existing = m[index]["mappings"].get("properties", {})
+    except Exception:
+        pass
+    to_add = {}
+    if "page_features" not in existing:
+        to_add["page_features"] = {"type": "object", "enabled": False}
+    if "tag_status" not in existing:
+        to_add["tag_status"] = {"type": "keyword"}
+    if not to_add:
+        return
+    try:
+        es.indices.put_mapping(index=index, body={"properties": to_add})
+    except BadRequestError as e:
+        print(f"put_mapping 跳过: {e}")
+
+
 def run(batch_size: int, workers: int, limit: int):
     if not llm_available():
         print("请在 .env.key 中配置 DEEPSEEK_API_KEY")
@@ -132,15 +168,7 @@ def run(batch_size: int, workers: int, limit: int):
 
     es = Elasticsearch(settings.ES_HOST, request_timeout=120)
     index = settings.ES_INDEX_NAME
-    es.indices.put_mapping(
-        index=index,
-        body={
-            "properties": {
-                "page_features": {"type": "object", "enabled": False},
-                "tag_status": {"type": "keyword"},
-            }
-        },
-    )
+    _ensure_mapping(es, index)
 
     res = es.search(
         index=index,
@@ -179,7 +207,7 @@ def run(batch_size: int, workers: int, limit: int):
         es.clear_scroll(scroll_id=sid)
     except Exception:
         pass
-    print(f"全部完成，共 LLM 更新 {updated} 条")
+    print(f"全部完成，LLM 更新 {updated} 条 | 失败批次 {_stats['llm_fail']} | 模板复用 {_stats['cached']}")
 
 
 if __name__ == "__main__":

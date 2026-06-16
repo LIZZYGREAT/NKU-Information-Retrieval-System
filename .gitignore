@@ -1,6 +1,7 @@
 *.jsonl
 docs
 snapshots
+crawler/crawl_jobs/
 *.pyc
 *__pycache__/
 *config.py

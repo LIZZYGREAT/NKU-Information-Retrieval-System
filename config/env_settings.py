@@ -71,7 +71,7 @@ class Settings:
     TAGGER_MIN_CONFIDENCE: float = float(os.environ.get("TAGGER_MIN_CONFIDENCE", "0.55"))
     CRAWL_TAGGER_MODE: str = os.environ.get("CRAWL_TAGGER_MODE", "rule")
     BATCH_TAG_SIZE: int = int(os.environ.get("BATCH_TAG_SIZE", "8"))
-    BATCH_TAG_WORKERS: int = int(os.environ.get("BATCH_TAG_WORKERS", "5"))
+    BATCH_TAG_WORKERS: int = int(os.environ.get("BATCH_TAG_WORKERS", "2"))
     DEEPSEEK_CALL_INTERVAL: float = float(os.environ.get("DEEPSEEK_CALL_INTERVAL", "0.35"))
 
 
