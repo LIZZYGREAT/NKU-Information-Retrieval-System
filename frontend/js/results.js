@@ -2,14 +2,44 @@ document.addEventListener('DOMContentLoaded', () => {
     window.renderAuthUI();
     const urlParams = new URLSearchParams(window.location.search);
     let currentQuery = urlParams.get('q') || '';
-    const currentType = urlParams.get('type') || 'site';
+    let currentType = urlParams.get('type') || 'site';
     let currentPage = parseInt(urlParams.get('page'), 10) || 1;
 
     const topInput = document.getElementById('top-search-input');
     const searchBtn = document.getElementById('top-search-btn');
     const container = document.getElementById('results-container');
     const stats = document.getElementById('result-stats');
+    const intentBar = document.getElementById('query-intent-bar');
     const pagination = document.getElementById('pagination-container');
+    const typeTabs = document.querySelectorAll('.type-tab');
+
+    function syncTypeTabs() {
+        typeTabs.forEach((tab) => {
+            tab.classList.toggle('active', tab.dataset.type === currentType);
+        });
+    }
+
+    syncTypeTabs();
+
+    typeTabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+            const t = tab.dataset.type;
+            if (t === currentType || !currentQuery) return;
+            currentType = t;
+            currentPage = 1;
+            syncTypeTabs();
+            updateUrl();
+            fetchResults();
+        });
+    });
+
+    function updateUrl() {
+        const url = new URL(window.location.href);
+        url.searchParams.set('q', currentQuery);
+        url.searchParams.set('type', currentType);
+        url.searchParams.set('page', String(currentPage));
+        history.replaceState(null, '', url);
+    }
 
     if (currentQuery) {
         topInput.value = currentQuery;
@@ -21,7 +51,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function goSearch(page) {
         const q = topInput.value.trim();
         if (!q) return;
-        window.location.href = `results.html?q=${encodeURIComponent(q)}&type=${currentType}&page=${page || 1}`;
+        currentQuery = q;
+        currentPage = page || 1;
+        window.location.href = `results.html?q=${encodeURIComponent(q)}&type=${currentType}&page=${currentPage}`;
     }
 
     searchBtn.addEventListener('click', () => goSearch(1));
@@ -58,15 +90,39 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderTagPills(tags) {
+    function renderTagPills(tags, matched) {
         if (!tags || !tags.length) return '';
+        const matchedSet = new Set((matched || []).map((m) => `${m.type}:${m.label.split(' ')[0]}`));
         const typeClass = { college: 'tag-college', macro: 'tag-macro', group: 'tag-group', topic: 'tag-topic' };
         const typeName = { college: '学院', macro: '大类', group: '学科群', topic: '主题' };
         return tags.map((t) => {
             const cls = typeClass[t.type] || 'tag-topic';
             const prefix = typeName[t.type] ? `${typeName[t.type]}:` : '';
-            return `<span class="tag-pill ${cls}">${prefix}${escapeHtml(t.label)}</span>`;
+            const label = t.label.split(' ')[0];
+            const key = `${t.type}:${label}`;
+            const hit = matchedSet.has(key);
+            return `<span class="tag-pill ${cls}${hit ? ' tag-matched' : ''}">${prefix}${escapeHtml(t.label)}</span>`;
         }).join('');
+    }
+
+    function renderAttachments(items) {
+        if (!items || !items.length) return '';
+        return items.map((a) =>
+            `<a class="attachment-link" href="${escapeAttr(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.name || a.url)}</a>`
+        ).join('');
+    }
+
+    function renderQueryIntent(intent) {
+        if (!intent || !intent.tags || !intent.tags.length) {
+            intentBar.innerHTML = '';
+            return;
+        }
+        const typeClass = { college: 'tag-college', macro: 'tag-macro', group: 'tag-group', topic: 'tag-topic' };
+        const pills = intent.tags.map((t) => {
+            const cls = typeClass[t.type] || 'tag-topic';
+            return `<span class="tag-pill ${cls}">${escapeHtml(t.label)}</span>`;
+        }).join('');
+        intentBar.innerHTML = `<div class="query-intent-bar"><span class="query-intent-label">搜索意图</span>${pills}</div>`;
     }
 
     function renderResults(data) {
@@ -78,7 +134,9 @@ document.addEventListener('DOMContentLoaded', () => {
             statText += `（索引库匹配约 ${totalIndexed} 条）`;
         }
         statText += ` · 第 ${data.current_page || 1} / ${data.total_pages || 1} 页`;
+        if (data.personalized) statText += ' · 已按您的兴趣排序';
         stats.textContent = statText;
+        renderQueryIntent(data.query_intent);
         container.innerHTML = '';
 
         if (!results.length) {
@@ -91,17 +149,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const card = document.createElement('article');
             card.className = 'result-card';
             const snapshotUrl = `${apiBase}/snapshot?url=${encodeURIComponent(item.url)}`;
-            const tagsHtml = renderTagPills(item.tags);
+            const tagsHtml = renderTagPills(item.tags, item.matched_tags);
+            const attachHtml = renderAttachments(item.attachments);
+            const recBadge = item.personalized ? '<span class="rec-badge">与您相关</span>' : '';
             card.innerHTML = `
                 <div class="result-head">
                     <a href="${escapeAttr(item.url)}" target="_blank" rel="noopener" class="result-title">${escapeHtml(item.title || '无标题')}</a>
-                    <span class="score-badge">${item.score}</span>
+                    <span class="result-badges">${recBadge}<span class="score-badge">${item.score}</span></span>
                 </div>
                 <div class="result-meta">
                     ${escapeHtml(item.url)}
                     <a class="snapshot-link" href="${escapeAttr(snapshotUrl)}" target="_blank" rel="noopener">快照</a>
                 </div>
                 ${tagsHtml ? `<div class="result-tags">${tagsHtml}</div>` : ''}
+                ${attachHtml ? `<div class="result-attachments">${attachHtml}</div>` : ''}
                 <div class="result-highlight">${item.highlight || ''}</div>
             `;
             container.appendChild(card);

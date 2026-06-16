@@ -17,11 +17,18 @@
         "search_analyzer": "ik_smart"
       },
       "attachments": { "type": "keyword" },
+      "attachment_names": {
+        "type": "text",
+        "analyzer": "ik_max_word",
+        "search_analyzer": "ik_smart"
+      },
       "pagerank": { "type": "double" },
       "crawl_time": { "type": "date" },
       "tags": { "type": "keyword" },
       "tags_kw": { "type": "keyword" },
-      "tags_detail": { "type": "object", "enabled": false }
+      "tags_detail": { "type": "object", "enabled": false },
+      "page_features": { "type": "object", "enabled": false },
+      "tag_status": { "type": "keyword" }
     }
   }
 }

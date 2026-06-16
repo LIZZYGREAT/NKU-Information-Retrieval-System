@@ -14,17 +14,46 @@ import os
 import sys
 import json
 import hashlib
+import re
 import pymysql
 from pathlib import Path
+from datetime import datetime
+from urllib.parse import urljoin
 from elasticsearch import Elasticsearch
 from scrapy.exceptions import DropItem
-import datetime
 
 # 添加项目根目录到Python路径
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from config.page_tagger import tag_page_enriched, normalize_title
+from config.page_tagger import tag_page_crawl_only, normalize_title
+
+
+def enrich_snapshot_html(raw_html: str, page_url: str) -> str:
+    crawl_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    base_href = urljoin(page_url, './')
+    banner = (
+        f'<div id="dbms-snapshot-banner" style="position:sticky;top:0;z-index:999999;'
+        f'background:#702f8a;color:#fff;padding:10px 16px;font:14px/1.5 sans-serif;'
+        f'box-shadow:0 2px 6px rgba(0,0,0,.2);">'
+        f'<strong>网页快照</strong> · 抓取于 {crawl_time} · '
+        f'<a href="{page_url}" style="color:#ffe082" target="_blank" rel="noopener">查看原始页面</a>'
+        f'</div>'
+    )
+    html = raw_html or ''
+    if re.search(r'<head[^>]*>', html, re.I):
+        if not re.search(r'<meta[^>]+charset', html, re.I):
+            html = re.sub(r'(<head[^>]*>)', r'\1\n<meta charset="utf-8">', html, count=1, flags=re.I)
+        if not re.search(r'<base[^>]+href', html, re.I):
+            html = re.sub(r'(<head[^>]*>)', rf'\1\n<base href="{base_href}">', html, count=1, flags=re.I)
+    else:
+        html = f'<!DOCTYPE html><html><head><meta charset="utf-8"><base href="{base_href}"></head><body>{html}</body></html>'
+    if re.search(r'<body[^>]*>', html, re.I):
+        html = re.sub(r'(<body[^>]*>)', rf'\1\n{banner}', html, count=1, flags=re.I)
+    else:
+        html = banner + html
+    html = re.sub(r'<script(?![^>]*application/ld\+json)[^>]*>[\s\S]*?</script>', '', html, flags=re.I)
+    return html
 
 
 class SnapshotFilePipeline:
@@ -77,8 +106,9 @@ class SnapshotFilePipeline:
 
         # 写入快照文件
         try:
+            enriched_html = enrich_snapshot_html(item['raw_html'], item['url'])
             with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(item['raw_html'])
+                f.write(enriched_html)
         except IOError as e:
             spider.logger.error(f"Snapshot write failed for {item['url']}: {e}")
             raise DropItem("Snapshot write failed")
@@ -141,26 +171,30 @@ class ElasticSearchPipeline:
         :return: 更新后的数据项（包含page_tags字段）
         """
         # 使用标签器为页面添加分类标签
-        enriched = tag_page_enriched(
+        enriched = tag_page_crawl_only(
             item.get("url", ""),
             item.get("title", "") or "",
             item.get("content", "") or "",
+            page_features=item.get("page_features"),
         )
         tags = enriched["tags_kw"]
         title = item.get("title") or ""
-        
-        # 构建ES文档
+        page_features = enriched.get("page_features") or item.get("page_features") or {}
+
         es_doc = {
             "url": item.get("url"),
             "title": title,
-            "title_norm": normalize_title(title),  # 规范化标题用于去重
+            "title_norm": normalize_title(title),
             "content": item.get("content"),
             "attachments": item.get("attachments", []),
+            "attachment_names": item.get("attachment_names", []),
             "tags": tags,
-            "tags_kw": tags,           # 关键词标签
-            "tags_detail": enriched.get("tags_detail", []),  # 标签详情（含置信度）
-            "crawl_time": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "pagerank": item.get("pagerank", 0.001),  # 初始PageRank值
+            "tags_kw": tags,
+            "tags_detail": enriched.get("tags_detail", []),
+            "page_features": page_features,
+            "tag_status": enriched.get("tag_status", "pending"),
+            "crawl_time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "pagerank": item.get("pagerank", 0.001),
         }
         
         # 保存标签信息到数据项

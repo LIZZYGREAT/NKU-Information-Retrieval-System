@@ -54,7 +54,7 @@ class EsDAO:
         if search_type == "document":
             return {
                 "bool": {
-                    "must": [{"multi_match": {"query": query_text, "fields": ["title^2", "content"]}}],
+                    "must": [{"multi_match": {"query": query_text, "fields": ["title^2", "content", "attachment_names^1.5"]}}],
                     "filter": [{"exists": {"field": "attachments"}}],
                 }
             }
@@ -147,7 +147,7 @@ class EsDAO:
         body = {
             "query": self.build_stage1_query(base_query, query_text),
             "size": k,
-            "_source": ["url", "title", "content", "pagerank", "tags_kw", "tags_detail", "crawl_time"],
+            "_source": ["url", "title", "content", "pagerank", "tags_kw", "tags_detail", "crawl_time", "attachments", "attachment_names"],
             "highlight": {
                 "fields": {
                     "content": {

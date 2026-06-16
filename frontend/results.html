@@ -17,7 +17,14 @@
     </header>
 
     <main class="results-page">
-        <div class="results-toolbar">
+        <div class="search-panel">
+            <div class="search-type-tabs" id="search-type-tabs">
+                <button type="button" class="type-tab" data-type="site">站内查询</button>
+                <button type="button" class="type-tab" data-type="phrase">短语查询</button>
+                <button type="button" class="type-tab" data-type="wildcard">通配查询</button>
+                <button type="button" class="type-tab" data-type="document">文档查询</button>
+            </div>
+            <div class="results-toolbar">
             <div class="search-input-wrap">
                 <div id="top-search-ghost" class="search-ghost" aria-hidden="true"></div>
                 <input type="text" id="top-search-input" class="search-input" placeholder="输入检索内容..." autocomplete="off" spellcheck="false">
@@ -25,9 +32,11 @@
             </div>
             <button type="button" id="top-search-btn" class="btn btn-primary">重新检索</button>
             <a href="index.html" class="btn">返回首页</a>
+            </div>
         </div>
 
         <div id="result-stats"></div>
+        <div id="query-intent-bar"></div>
         <div id="results-container"></div>
         <div id="pagination-container"></div>
     </main>

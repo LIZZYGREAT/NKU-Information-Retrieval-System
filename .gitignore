@@ -6,7 +6,7 @@ snapshots
 *config.py
 .env.dev
 .env.prod
-.env.key.example
+.env.key
 frontend/js/config.js
 correct_and_suggestion/
 *zip

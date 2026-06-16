@@ -68,14 +68,17 @@ def _user_prompt(url: str, title: str, content: str, rule_hints: List[str]) -> s
 """
 
 
+from config.env_settings import settings
+
+
 def _load_llm_config() -> Dict[str, Any]:
     return {
-        "api_key": os.environ.get("DEEPSEEK_API_KEY", "").strip(),
-        "base_url": os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/"),
-        "model": os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash"),
-        "min_confidence": float(os.environ.get("TAGGER_MIN_CONFIDENCE", "0.55")),
-        "enabled": os.environ.get("TAGGER_MODE", "hybrid").lower() in ("llm", "hybrid"),
-        "interval_sec": float(os.environ.get("DEEPSEEK_CALL_INTERVAL", "0.35")),
+        "api_key": (settings.DEEPSEEK_API_KEY or "").strip(),
+        "base_url": (settings.DEEPSEEK_BASE_URL or "https://api.deepseek.com").rstrip("/"),
+        "model": settings.DEEPSEEK_MODEL or "deepseek-v4-flash",
+        "min_confidence": settings.TAGGER_MIN_CONFIDENCE,
+        "enabled": (settings.TAGGER_MODE or "hybrid").lower() in ("llm", "hybrid"),
+        "interval_sec": settings.DEEPSEEK_CALL_INTERVAL,
     }
 
 
@@ -95,15 +98,15 @@ def _throttle(interval: float) -> None:
     _LAST_CALL = time.time()
 
 
-def _call_deepseek(user_prompt: str) -> str:
+def _call_deepseek(user_prompt: str, system: Optional[str] = None) -> str:
     cfg = _load_llm_config()
     if not cfg["api_key"]:
-        raise RuntimeError("DEEPSEEK_API_KEY missing")
+        raise RuntimeError("DEEPSEEK_API_KEY missing，请在 .env.key 中配置")
     _throttle(cfg["interval_sec"])
     payload = {
         "model": cfg["model"],
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system or SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0.1,
@@ -168,6 +171,136 @@ def tag_page_with_llm(
 
     hints = rule_hints or []
     raw = _call_deepseek(_user_prompt(url, title, content, hints))
+    parsed = _parse_llm_json(raw)
+    details = []
+    for it in parsed:
+        if it["confidence"] < cfg["min_confidence"]:
+            continue
+        details.append({
+            "tag": _to_tag_key(it["namespace"], it["value"]),
+            "namespace": it["namespace"],
+            "value": it["value"],
+            "confidence": round(it["confidence"], 4),
+            "source": "llm",
+        })
+    if use_cache:
+        _CACHE[cache_key] = {"tags_detail": details}
+    return details
+
+
+QUERY_INTENT_SYSTEM = """你是南开大学站内搜索意图分析助手。根据用户搜索词，推断其想查找的内容属于哪些标签维度。
+
+命名空间：
+- college：学院（取值来自学院名单）
+- macro：人文社科类 | 理工医学类
+- group：学科群（人文学科群、社会科学群、经济管理群、信息科学群等）
+- topic：主题（新闻、教务、教育、学术、综合）
+
+规则：
+- 只输出 JSON，不要 Markdown
+- confidence 0~1；不确定时降低置信度，不要臆造
+- 搜索词明确指向某学院/学科时，优先输出 college/group/macro
+- 仅当无法判断学科方向时，才用 topic:综合
+
+输出格式：
+{"tags":[{"namespace":"college","value":"计算机学院","confidence":0.92}]}"""
+
+
+BATCH_SYSTEM_PROMPT = """你是南开大学站内网页批量分类助手。根据每条页面的 URL、标题、标题层级、关键词与摘要，输出结构化标签与置信度。
+
+命名空间：college, macro, group, topic, page_type, audience, intent（取值规则同单页标注）。
+只输出 JSON，不要 Markdown。
+confidence 0~1；不确定时降低置信度。
+
+输出格式：
+{"results":[{"id":"0","tags":[{"namespace":"topic","value":"通知公告","confidence":0.88}]},{"id":"1","tags":[]}]}"""
+
+
+def _batch_user_prompt(pages: List[Dict[str, Any]]) -> str:
+    blocks = []
+    for i, p in enumerate(pages):
+        blocks.append(
+            f"[{i}] URL:{p.get('url','')}\n"
+            f"标题:{p.get('title','')}\n"
+            f"标题层级:{', '.join(p.get('headings') or [])}\n"
+            f"关键词:{', '.join(p.get('keywords') or [])}\n"
+            f"规则预标签:{', '.join(p.get('rule_hints') or [])}\n"
+            f"摘要:{(p.get('snippet') or '')[:400]}"
+        )
+    return f"""请批量标注以下 {len(pages)} 个网页，results 中 id 必须与下方序号一致。
+
+【学院名单】{", ".join(COLLEGE_NAMES)}
+【宏观门类】{", ".join(MACRO_CATEGORIES)}
+【学科群】{", ".join(DISCIPLINE_GROUPS)}
+【主题词表】{", ".join(TOPIC_LABELS)}
+【页面类型】{", ".join(PAGE_TYPES)}
+【受众】{", ".join(AUDIENCES)}
+【意图】{", ".join(INTENTS)}
+
+""" + "\n\n".join(blocks)
+
+
+def _parse_batch_llm_json(raw: str) -> Dict[str, List[Dict[str, Any]]]:
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    obj = json.loads(text)
+    rows = obj.get("results") if isinstance(obj, dict) else obj
+    if not isinstance(rows, list):
+        return {}
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        pid = str(row.get("id", ""))
+        tags = _parse_llm_json(json.dumps({"tags": row.get("tags", [])}))
+        out[pid] = tags
+    return out
+
+
+def tag_pages_batch_with_llm(pages: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    cfg = _load_llm_config()
+    if not pages:
+        return {}
+    raw = _call_deepseek(_batch_user_prompt(pages), system=BATCH_SYSTEM_PROMPT)
+    parsed = _parse_batch_llm_json(raw)
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    min_conf = cfg["min_confidence"]
+    for i, _p in enumerate(pages):
+        key = str(i)
+        details = []
+        for it in parsed.get(key, []):
+            if it["confidence"] < min_conf:
+                continue
+            details.append({
+                "tag": _to_tag_key(it["namespace"], it["value"]),
+                "namespace": it["namespace"],
+                "value": it["value"],
+                "confidence": round(it["confidence"], 4),
+                "source": "llm",
+            })
+        result[key] = details
+    return result
+
+
+def infer_query_intent_llm(query_text: str, use_cache: bool = True) -> List[Dict[str, Any]]:
+    cfg = _load_llm_config()
+    q = (query_text or "").strip()
+    cache_key = "q|" + hashlib.md5(q.encode()).hexdigest()
+    if use_cache and cache_key in _CACHE:
+        return _CACHE[cache_key]["tags_detail"]
+
+    prompt = f"""分析搜索词意图。
+
+【学院名单】{", ".join(COLLEGE_NAMES)}
+【宏观门类】{", ".join(MACRO_CATEGORIES)}
+【学科群】{", ".join(DISCIPLINE_GROUPS)}
+【主题】新闻, 教务, 教育, 学术, 综合
+
+【搜索词】{q}
+"""
+    raw = _call_deepseek(prompt, system=QUERY_INTENT_SYSTEM)
     parsed = _parse_llm_json(raw)
     details = []
     for it in parsed:

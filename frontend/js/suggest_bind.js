@@ -24,7 +24,6 @@ function setupSearchSuggest(opts) {
         inputEl.value = text;
         listEl.style.display = 'none';
         if (ghostEl) ghostEl.style.display = 'none';
-        onSubmit();
     }
 
     async function showHistory() {

@@ -124,7 +124,7 @@ a:hover { text-decoration: underline; }
 
 em { color: #d93025; font-style: normal; font-weight: 600; }
 
-.suggestions, #suggestions-list {
+.suggestions, #suggestions-list, #top-suggestions-list {
     position: absolute;
     top: 100%;
     left: 0;
@@ -140,14 +140,14 @@ em { color: #d93025; font-style: normal; font-weight: 600; }
     box-shadow: var(--shadow);
     text-align: left;
 }
-.suggestions li, #suggestions-list li {
+.suggestions li, #suggestions-list li, #top-suggestions-list li {
     padding: 10px 16px;
     cursor: pointer;
     font-size: 14px;
     border-bottom: 1px solid #f1f3f4;
 }
-.suggestions li:last-child, #suggestions-list li:last-child { border-bottom: none; }
-.suggestions li:hover, #suggestions-list li:hover { background: var(--primary-light); }
+.suggestions li:last-child, #suggestions-list li:last-child, #top-suggestions-list li:last-child { border-bottom: none; }
+.suggestions li:hover, #suggestions-list li:hover, #top-suggestions-list li:hover { background: var(--primary-light); }
 .suggest-tag {
     display: inline-block;
     font-size: 11px;

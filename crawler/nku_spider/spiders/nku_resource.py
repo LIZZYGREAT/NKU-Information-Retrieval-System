@@ -12,6 +12,12 @@
 
 import scrapy
 from nku_spider.items import NkuSpiderItem
+from config.page_features import extract_headings, build_page_features
+
+DOC_EXTENSIONS = (
+    '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.ppt', '.pptx',
+    '.txt', '.csv', '.wps', '.rtf', '.zip',
+)
 
 
 class NankaiSpider(scrapy.Spider):
@@ -54,17 +60,13 @@ class NankaiSpider(scrapy.Spider):
         'https://history.nankai.edu.cn/',         # 历史学院
         'https://wxy.nankai.edu.cn/',             # 文学院
         'https://hyxy.nankai.edu.cn/',            # 汉语言文化学院
-        'https://zf.nankai.edu.cn/',              # 周恩来政府管理学院
-        
-        # 5. 经济与商科
-        'https://bs.nankai.edu.cn/',              # 商学院
-        'https://eco.nankai.edu.cn/',             # 经济学院
-        'https://finance.nankai.edu.cn/',         # 金融学院
-        
-        # 6. 教务、科研与行政服务（获取文档附件和规章制度）
-        'http://jwc.nankai.edu.cn/',              # 教务处
-        'https://graduate.nankai.edu.cn/',        # 研究生院
-        'https://kyb.nankai.edu.cn/',             # 科学技术研究部
+        'https://zfxy.nankai.edu.cn/',
+        'https://bs.nankai.edu.cn/',
+        'https://economics.nankai.edu.cn/',
+        'https://finance.nankai.edu.cn/',
+        'http://jwc.nankai.edu.cn/',
+        'https://graduate.nankai.edu.cn/',
+        'https://std.nankai.edu.cn/',
         'https://sie.nankai.edu.cn/'              # 国际教育学院
     ]
     
@@ -100,30 +102,57 @@ class NankaiSpider(scrapy.Spider):
         
         # 3. 提取纯净正文（剔除导航、页脚、脚本、样式等噪声）
         # 使用XPath过滤掉非正文区域
-        raw_text_list = response.xpath('''
-            //body//text()[
-                not(ancestor::script) and           # 排除脚本内容
-                not(ancestor::style) and            # 排除样式内容
-                not(ancestor::header) and           # 排除页眉
-                not(ancestor::footer) and           # 排除页脚
-                not(ancestor::nav) and              # 排除导航
-                not(ancestor::div[contains(@class, "header")]) and
-                not(ancestor::div[contains(@class, "footer")]) and
-                not(ancestor::div[contains(@class, "nav")]) and
-                not(ancestor::div[contains(@class, "bottom")])
-            ]
-        ''').getall()
+        raw_text_list = response.xpath(
+            '//body//text()['
+            'not(ancestor::script) and '
+            'not(ancestor::style) and '
+            'not(ancestor::header) and '
+            'not(ancestor::footer) and '
+            'not(ancestor::nav) and '
+            'not(ancestor::div[contains(@class, "header")]) and '
+            'not(ancestor::div[contains(@class, "footer")]) and '
+            'not(ancestor::div[contains(@class, "nav")]) and '
+            'not(ancestor::div[contains(@class, "bottom")])'
+            ']'
+        ).getall()
         
         # 拼接纯净正文，过滤空白字符
         item['content'] = ' '.join([text.strip() for text in raw_text_list if text.strip()])
 
-        # 4. 提取文档附件链接（满足文档搜索需求）
-        doc_links = response.xpath('//a[contains(@href, ".doc") or contains(@href, ".pdf") or contains(@href, ".xls")]/@href').getall()
-        # 转换为绝对URL
-        item['attachments'] = [response.urljoin(link) for link in doc_links]
+        attachments = []
+        attachment_names = []
+        seen_urls = set()
+        for a in response.xpath('//a[@href]'):
+            href = (a.xpath('@href').get() or '').strip()
+            if not href or href.startswith(('javascript:', 'mailto:', '#')):
+                continue
+            path_lower = href.lower().split('?')[0].split('#')[0]
+            if not any(path_lower.endswith(ext) for ext in DOC_EXTENSIONS):
+                continue
+            full_url = response.urljoin(href)
+            if full_url in seen_urls:
+                continue
+            seen_urls.add(full_url)
+            name = ' '.join(t.strip() for t in a.xpath('.//text()').getall() if t.strip())
+            if not name:
+                name = href.rstrip('/').split('/')[-1].split('?')[0]
+            attachments.append(full_url)
+            attachment_names.append(name)
 
-        # 5. 提取新链接并继续爬取，同时收集有效出链构建拓扑
-        valid_out_links = set()  # 使用集合去重
+        item['attachments'] = attachments
+        item['attachment_names'] = attachment_names
+        if attachment_names:
+            item['content'] = item['content'] + ' ' + ' '.join(attachment_names)
+
+        headings = extract_headings(response)
+        item['page_features'] = build_page_features(
+            response.url,
+            item['title'],
+            item['content'],
+            headings=headings,
+        )
+
+        valid_out_links = set()
         links = response.xpath('//a/@href').getall()
         
         for link in links:
@@ -132,7 +161,7 @@ class NankaiSpider(scrapy.Spider):
                 continue
             
             # 过滤多媒体与压缩包等非网页资源
-            if link.lower().endswith(('.jpg', '.png', '.gif', '.mp4', '.zip', '.rar', '.doc', '.docx', '.pdf', '.xls', '.xlsx')):
+            if link.lower().endswith(('.jpg', '.png', '.gif', '.mp4', '.rar') + DOC_EXTENSIONS):
                 continue
             
             # 拼接绝对路径并加入当前页面的出链集合

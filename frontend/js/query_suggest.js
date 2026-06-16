@@ -126,9 +126,18 @@ function bindSuggestKeyboard(inputEl, listEl, getItems, onPick, onEnter) {
 
     inputEl.addEventListener('keydown', (e) => {
         const items = getItems();
-        if (!items.length || listEl.style.display === 'none') {
+        const listVisible = items.length && listEl.style.display !== 'none';
+
+        if (e.key === 'Enter') {
+            if (listVisible && activeIndex >= 0) {
+                e.preventDefault();
+                onPick(items[activeIndex].value, activeIndex);
+            }
+            onEnter();
             return;
         }
+        if (!listVisible) return;
+
         if (e.key === 'ArrowDown') {
             e.preventDefault();
             activeIndex = (activeIndex + 1) % items.length;
@@ -140,11 +149,6 @@ function bindSuggestKeyboard(inputEl, listEl, getItems, onPick, onEnter) {
         } else if (e.key === 'Tab' && activeIndex >= 0) {
             e.preventDefault();
             onPick(items[activeIndex].value, activeIndex);
-        } else if (e.key === 'Enter' && activeIndex >= 0) {
-            e.preventDefault();
-            onPick(items[activeIndex].value, activeIndex);
-        } else if (e.key === 'Enter') {
-            onEnter();
         }
     });
 

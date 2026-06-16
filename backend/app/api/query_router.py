@@ -69,6 +69,29 @@ def query_correct(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/intent")
+def query_intent(q: str = Query(..., min_length=1)):
+    try:
+        import sys
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[3]
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from config.page_tagger import resolve_query_intent, format_query_intent_display
+        intent = resolve_query_intent(q)
+        return {
+            "code": 200,
+            "data": {
+                "category": intent["category"],
+                "source": intent["source"],
+                "tags": format_query_intent_display(intent),
+                "raw_tags": intent["tags"],
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/reload-vocab")
 def reload_vocabulary(
     svc: QuerySuggestService = Depends(get_query_suggest_service),

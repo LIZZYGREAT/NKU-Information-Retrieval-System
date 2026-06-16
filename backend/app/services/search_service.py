@@ -13,16 +13,17 @@ _ROOT = Path(__file__).resolve().parents[3]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from config.page_tagger import normalize_title
+from config.page_tagger import normalize_title, compute_tag_match_score, resolve_query_intent, format_query_intent_display
 
 # 分页大小配置，每页显示10条搜索结果
 PAGE_SIZE = 10
 
 # 多维度排序权重配置（总和为1.0）
 # 这些权重经过实验调优，平衡相关性、权威性、个性化和精确匹配
-W_RELEVANCE = 0.52  # Elasticsearch相关性得分权重
+W_QUERY_TAG = 0.16
+W_RELEVANCE = 0.48  # Elasticsearch相关性得分权重
 W_PAGERANK = 0.13   # PageRank权威性权重
-W_PERSONAL = 0.18   # 个性化推荐权重
+W_PERSONAL = 0.22   # 个性化推荐权重
 W_EXACT = 0.17      # 精确匹配权重
 
 
@@ -73,21 +74,24 @@ class SearchService:
             raise ValueError("Query text cannot be empty")
 
         query_text = query_text.strip()
+        query_intent = resolve_query_intent(query_text)
 
-        # 获取用户个性化上下文，用于后续重排序
         context = None
         if user_id:
-            context = self.mysql_dao.get_personalization_context(user_id, query_text)
+            context = self.mysql_dao.get_personalization_context(user_id, query_text, query_intent)
+        else:
+            context = {
+                "query_tag_profile": query_intent["tags"],
+                "query_intent": query_intent,
+                "tag_weights": {},
+                "query_category": query_intent["category"],
+            }
 
-        # 构建基础查询并获取候选结果
         base_query = self.es_dao.build_base_query(query_text, search_type)
         raw_response = self.es_dao.fetch_candidates(base_query, query_text)
         hits = raw_response.get("hits", {}).get("hits", [])
 
-        # 个性化重排序：仅在有用户上下文时执行
-        if context:
-            hits = self._rerank_hits(hits, query_text, context)
-
+        hits = self._rerank_hits(hits, query_text, context)
         # 解析ES返回结果，提取关键信息
         parsed_results = []
         for hit in hits:
@@ -101,12 +105,16 @@ class SearchService:
             if isinstance(tags_raw, str):
                 tags_raw = [tags_raw]
             
+            matched = hit.get("_matched_user_tags") or []
             parsed_results.append({
                 "url": hit.get("_id"),
                 "title": source.get("title", ""),
                 "highlight": highlight_text,
                 "score": round(hit.get("_final_score", hit.get("_score", 0.0)), 4),
                 "tags": self._format_tags_for_display(tags_raw, source.get("tags_detail")),
+                "matched_tags": self._format_matched_tags(matched),
+                "personalized": bool(matched),
+                "attachments": self._format_attachments(source),
             })
 
         # 去重处理，避免重复结果
@@ -132,6 +140,12 @@ class SearchService:
             "total_pages": total_pages,
             "page_size": PAGE_SIZE,
             "current_page": page,
+            "personalized": bool(context and context.get("tag_weights")),
+            "query_intent": {
+                "category": query_intent["category"],
+                "source": query_intent["source"],
+                "tags": format_query_intent_display(query_intent),
+            },
             "results": page_results,
         }
 
@@ -252,45 +266,66 @@ class SearchService:
 
         return score
 
-    def _personal_score(self, hit: Dict, context: Dict[str, Any]) -> float:
-        """
-        计算个性化得分
-        
-        :param hit: ES搜索结果单条记录
-        :param context: 用户个性化上下文字典
-        :return: 个性化得分
-        
-        个性化得分基于：
-        1. 标签匹配：根据用户兴趣标签计算匹配度
-        2. 域名偏好：用户所属学院域名优先
-        3. 兄弟域名：同类别其他学院域名加分
-        """
+    def _personal_score(self, hit: Dict, context: Dict[str, Any]) -> Tuple[float, List[str]]:
         src = hit.get("_source", {})
         url = src.get("url") or hit.get("_id", "")
         tags = src.get("tags_kw") or []
+        tags_detail = src.get("tags_detail") or []
 
         if isinstance(tags, str):
             tags = [tags]
 
         score = 0.0
-
-        # 标签权重匹配
+        matched: List[str] = []
         tw = context.get("tag_weights") or {}
-        for tag in tags:
-            score += tw.get(tag, 0.0)
 
-        # 域名偏好匹配
+        if tags_detail and isinstance(tags_detail, list):
+            for row in tags_detail:
+                if not isinstance(row, dict):
+                    continue
+                tag = row.get("tag") or ""
+                if not tag and row.get("namespace"):
+                    tag = f"{row['namespace']}:{row.get('value', '')}"
+                conf = float(row.get("confidence", 1.0))
+                w = tw.get(tag, 0.0)
+                if w > 0:
+                    score += w * conf
+                    if tag not in matched:
+                        matched.append(tag)
+        else:
+            for tag in tags:
+                w = tw.get(tag, 0.0)
+                if w > 0:
+                    score += w
+                    matched.append(tag)
+
         host = urlparse(url).netloc.lower()
         pref = (context.get("preferred_domain") or "").lower()
         if pref and pref in host:
             score += 2.5
+            college = context.get("college_name")
+            if college:
+                ck = f"college:{college}"
+                if ck not in matched:
+                    matched.append(ck)
 
-        # 兄弟域名匹配（同二级分类）
         for dom in context.get("sibling_domains_t1", []):
             if dom and dom.lower() in host:
                 score += 0.6
 
-        return score
+        return score, matched
+
+    def _query_tag_score(self, hit: Dict, context: Dict[str, Any]) -> float:
+        profile = context.get("query_tag_profile") or []
+        if not profile:
+            return 0.0
+        src = hit.get("_source", {})
+        return compute_tag_match_score(
+            src.get("tags_detail"),
+            src.get("tags_kw") or src.get("tags"),
+            profile,
+            context.get("tag_weights"),
+        )
 
     def _rerank_hits(self, hits: List[Dict], query: str, context: Dict[str, Any]) -> List[Dict]:
         """
@@ -322,17 +357,28 @@ class SearchService:
         # 提取四个维度的原始得分
         rel = [float(h.get("_score", 0)) for h in hits]
         pr = [math.log1p(float(h.get("_source", {}).get("pagerank", 0.001))) for h in hits]
-        pers = [self._personal_score(h, context) for h in hits]
+        pers = []
+        matched_all = []
+        for h in hits:
+            ps, mk = self._personal_score(h, context)
+            pers.append(ps)
+            h["_matched_user_tags"] = mk
+            matched_all.append(mk)
         exact = [self._exact_match_score(query, h.get("_source", {}).get("title", ""), h.get("_id", "")) for h in hits]
+        qtag = [self._query_tag_score(h, context) for h in hits]
 
-        # 归一化处理
         n_rel = self._minmax(rel)
         n_pr = self._minmax(pr)
         n_pers = self._minmax(pers)
+        n_qtag = self._minmax(qtag)
         n_exact = self._minmax(exact)
 
-        # 计算查询亲和度
         affinity = self._query_affinity(query, context)
+        has_subject = any(
+            p.get("namespace") in ("college", "group", "macro") and p.get("confidence", 0) >= 0.8
+            for p in (context.get("query_tag_profile") or [])
+        )
+        personal_scale = 0.35 if has_subject else 1.0
         max_exact = max(exact) if exact else 0.0
 
         # 加权融合
@@ -349,7 +395,8 @@ class SearchService:
             final = (
                 W_RELEVANCE * n_rel[i]
                 + W_PAGERANK * n_pr[i]
-                + W_PERSONAL * n_pers[i] * affinity
+                + W_PERSONAL * n_pers[i] * affinity * personal_scale
+                + W_QUERY_TAG * n_qtag[i]
                 + exact_part
             )
 
@@ -359,6 +406,36 @@ class SearchService:
         # 按最终得分降序排序
         scored.sort(key=lambda x: x[0], reverse=True)
         return [h for _, h in scored]
+
+    @staticmethod
+    def _format_matched_tags(matched: List[str]) -> List[Dict[str, str]]:
+        out = []
+        for tag in matched or []:
+            if not tag or not isinstance(tag, str):
+                continue
+            if tag.startswith("college:"):
+                out.append({"type": "college", "label": tag[8:]})
+            elif tag.startswith("macro:"):
+                out.append({"type": "macro", "label": tag[6:]})
+            elif tag.startswith("group:"):
+                out.append({"type": "group", "label": tag[6:]})
+            elif tag.startswith("topic:"):
+                out.append({"type": "topic", "label": tag[6:]})
+        return out[:6]
+
+    @staticmethod
+    def _format_attachments(source) -> List[Dict[str, str]]:
+        urls = source.get("attachments") or []
+        names = source.get("attachment_names") or []
+        if isinstance(urls, str):
+            urls = [urls]
+        if isinstance(names, str):
+            names = [names]
+        out = []
+        for i, url in enumerate(urls[:6]):
+            name = names[i] if i < len(names) and names[i] else url.rsplit("/", 1)[-1]
+            out.append({"url": url, "name": name})
+        return out
 
     @staticmethod
     def _format_tags_for_display(tags, tags_detail=None) -> List[Dict[str, str]]:
@@ -388,7 +465,13 @@ class SearchService:
                 # 过滤低置信度标签
                 if conf is not None and conf < 0.55:
                     continue
-                suffix = f" {int(conf * 100)}%" if conf is not None else ""
+                src = row.get("source", "")
+                if src == "rule" and conf is not None and conf >= 0.95:
+                    suffix = ""
+                elif conf is not None:
+                    suffix = f" {int(conf * 100)}%"
+                else:
+                    suffix = ""
                 out.append({"type": ns, "label": f"{label}{suffix}"})
             if out:
                 return out[:8]

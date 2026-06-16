@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
-    const searchType = document.getElementById('search-type');
     const searchBtn = document.getElementById('search-btn');
     const suggestionsList = document.getElementById('suggestions-list');
     const ghostEl = document.getElementById('search-ghost');
@@ -10,7 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function executeSearch() {
         const queryText = searchInput.value.trim();
         if (!queryText) return;
-        window.location.href = `results.html?q=${encodeURIComponent(queryText)}&type=${encodeURIComponent(searchType.value)}`;
+        window.location.href = `results.html?q=${encodeURIComponent(queryText)}&type=site`;
     }
 
     searchBtn.addEventListener('click', executeSearch);

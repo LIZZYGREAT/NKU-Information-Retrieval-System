@@ -41,15 +41,6 @@
             gap: 12px;
             justify-content: center;
         }
-        .search-box select {
-            padding: 10px 14px;
-            font-size: 15px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            outline: none;
-            background: var(--card);
-            color: var(--text);
-        }
         .search-input-wrapper { position: relative; flex: 1; min-width: 280px; }
         .search-input-wrapper .search-input { width: 100%; position: relative; z-index: 2; background: var(--card); }
         .search-ghost {
@@ -115,12 +106,6 @@
         <p class="home-subtitle">南开大学站内网页 · 个性化排序 · 网页快照</p>
         <div class="search-panel">
             <div class="search-box">
-                <select id="search-type">
-                    <option value="site">站内查询</option>
-                    <option value="phrase">短语查询</option>
-                    <option value="wildcard">通配查询</option>
-                    <option value="document">文档查询</option>
-                </select>
                 <div class="search-input-wrapper">
                     <div id="search-ghost" class="search-ghost" aria-hidden="true"></div>
                     <input type="text" id="search-input" class="search-input" placeholder="输入检索内容..." autocomplete="off" spellcheck="false">

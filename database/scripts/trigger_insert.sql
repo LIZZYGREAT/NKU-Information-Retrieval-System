@@ -1,4 +1,4 @@
---DROP TRIGGER IF EXISTS AfterUserRegister;
+DROP TRIGGER IF EXISTS AfterUserRegister;
 
 DELIMITER //
 CREATE TRIGGER AfterUserRegister

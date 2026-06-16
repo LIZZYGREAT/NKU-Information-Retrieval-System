@@ -14,7 +14,7 @@ from config.env_settings import settings
 
 load_env()
 
-if not os.environ.get("DEEPSEEK_API_KEY"):
+if not settings.DEEPSEEK_API_KEY:
     print("请在 .env.key 中配置 DEEPSEEK_API_KEY")
     sys.exit(1)
 

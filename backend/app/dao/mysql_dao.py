@@ -480,8 +480,7 @@ class MySQLDao:
                     ON DUPLICATE KEY UPDATE weight = VALUES(weight)
                 """
                 for cat in self._INTEREST_CATEGORIES:
-                    # 选中的分类权重为1.05，未选中的为1.0
-                    w = 1.05 if cat in selected else 1.0
+                    w = 1.25 if cat in selected else 0.95
                     cursor.execute(sql_pref, (user_id, cat, w))
             conn.commit()
             return True
@@ -522,7 +521,7 @@ class MySQLDao:
             logging.warning(f"CollegeDomain query failed, use static list: {e}")
         return colleges_as_dicts()
 
-    def get_personalization_context(self, user_id: int, query_text: str) -> Dict[str, Any]:
+    def get_personalization_context(self, user_id: int, query_text: str, query_intent: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         获取用户个性化上下文（用于搜索重排序）
         
@@ -547,9 +546,13 @@ class MySQLDao:
         root = Path(__file__).resolve().parents[3]
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
-        from config.page_tagger import infer_query_category, build_user_tag_weights
+        from config.page_tagger import build_user_tag_weights
 
-        category = infer_query_category(query_text)
+        if query_intent:
+            category = query_intent.get("category", "综合")
+        else:
+            from config.page_tagger import infer_query_category
+            category = infer_query_category(query_text)
         context: Dict[str, Any] = {
             "weight": 1.0,
             "query_category": category,
@@ -566,6 +569,7 @@ class MySQLDao:
             "active_interests": [],
             "recent_keywords": [],
             "tag_weights": {},
+            "query_tag_profile": [],
         }
 
         sql_profile = """
@@ -634,7 +638,7 @@ class MySQLDao:
                 # 获取活跃兴趣分类（权重>=1.05）
                 cursor.execute(
                     "SELECT category FROM UserPreference WHERE user_id = %s AND weight >= %s",
-                    (user_id, 1.05),
+                    (user_id, 1.15),
                 )
                 context["active_interests"] = [r["category"] for r in cursor.fetchall()]
 
@@ -650,6 +654,12 @@ class MySQLDao:
 
         # 构建标签权重字典
         context["tag_weights"] = build_user_tag_weights(context)
+        if query_intent:
+            context["query_tag_profile"] = query_intent["tags"]
+            context["query_intent"] = query_intent
+        else:
+            from config.page_tagger import infer_query_tag_profile
+            context["query_tag_profile"] = infer_query_tag_profile(query_text)
         return context
 
 
@@ -677,7 +687,10 @@ class MySQLDao:
                     profile["college_id"] = row["college_id"]
                 
                 # 2. 提取目前所有权重大于 1.0 的分类作为"已选兴趣"
-                cursor.execute("SELECT category FROM UserPreference WHERE user_id = %s AND weight > 1.0", (user_id,))
+                cursor.execute(
+                    "SELECT category, weight FROM UserPreference WHERE user_id = %s AND weight >= %s",
+                    (user_id, 1.15),
+                )
                 rows = cursor.fetchall()
                 if rows:
                     profile["interests"] = [r["category"] for r in rows]

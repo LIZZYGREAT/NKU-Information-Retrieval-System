@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -6,6 +7,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.env_settings import settings
+
+os.environ.setdefault("CRAWL_TAGGER_MODE", settings.CRAWL_TAGGER_MODE)
 
 MYSQL_HOST = settings.MYSQL_HOST
 MYSQL_USER = settings.MYSQL_USER
@@ -43,5 +46,7 @@ ITEM_PIPELINES = {
 }
 
 SNAPSHOT_STORAGE_PATH = '../backend/snapshots'
+
+CRAWL_TAGGER_MODE = settings.CRAWL_TAGGER_MODE
 
 FEED_EXPORT_ENCODING = 'utf-8'
