@@ -97,3 +97,10 @@ INSERT INTO CollegeDomain (college_name, domain_url, category, sub_category) VAL
 ('软件学院', 'cs.nankai.edu.cn', '理工医学类', '信息科学群'),
 ('密码与网络空间安全学院', 'cs.nankai.edu.cn', '理工医学类', '信息科学群'),
 ('人工智能学院', 'ai.nankai.edu.cn', '理工医学类', '信息科学群');
+
+
+CREATE DATABASE IF NOT EXISTS nku_search_prod CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS 'prod_user'@'localhost' IDENTIFIED BY 'Qq142536789..';
+GRANT ALL PRIVILEGES ON nku_search_prod.* TO 'prod_user'@'localhost';
+FLUSH PRIVILEGES;
