@@ -1,0 +1,15 @@
+{
+  "index": "nku_web_index_prod",
+  "started_at": "2026-06-17T12:57:05Z",
+  "updated_at": "2026-06-17T12:57:20Z",
+  "initial_pending": 111863,
+  "tagged_total": 9,
+  "cached_total": 0,
+  "failed_batches": 0,
+  "scanned_total": 136,
+  "last_batch_urls": [
+    "https://esd.nankai.edu.cn/info/1070/4421.htm",
+    "https://esd.nankai.edu.cn/info/1070/3242.htm"
+  ],
+  "note": "中断后重新运行即可续标；已完成文档 tag_status=llm_done 不会重复处理"
+}
