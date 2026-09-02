@@ -1,10 +1,9 @@
 *.jsonl
-docs
-snapshots
+docs/
+snapshots/
 crawler/crawl_jobs/
 *.pyc
 *__pycache__/
-*config.py
 .env.dev
 .env.prod
 .env.key
