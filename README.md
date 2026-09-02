@@ -446,14 +446,16 @@ The project computes PageRank with damping factor:
 using:
 
 ```math
-\operatorname{PR}(v)
+PR(v)
 =
 \frac{1-\alpha}{|V|}
 +
 \alpha
-\sum_{u\in \operatorname{In}(v)}
-\frac{\operatorname{PR}(u)}{\operatorname{OutDegree}(u)}
+\sum_{u:(u,v)\in E}
+\frac{PR(u)}{d^{+}(u)}
 ```
+
+where $d^{+}(u)$ denotes the out-degree of page $u$.
 
 The resulting authority score is synchronized back into Elasticsearch.
 
@@ -587,12 +589,14 @@ Therefore personalization is modulated by **query affinity**.
 Conceptually:
 
 ```math
-\mathrm{PersonalizationContribution}
+C_{\mathrm{personal}}
 =
-\mathrm{UserPreference}
+P_u
 \times
-\mathrm{QueryAffinity}
+A(q,u)
 ```
+
+where $P_u$ represents user-preference strength and $A(q,u)$ represents query–user affinity.
 
 For explicit subject queries, the implementation further reduces generic profile influence so that:
 
@@ -768,21 +772,22 @@ This representation is compared against page tags during reranking.
 A simplified compatibility function is:
 
 ```math
-\operatorname{Match}(q,d)
+M(q,d,u)
 =
 \sum_t
-\operatorname{Conf}_q(t)
+c_q(t)
 \cdot
-\operatorname{Conf}_d(t)
+c_d(t)
 \cdot
 \left(1+\lambda W_u(t)\right)
 ```
 
 where:
 
-* $\operatorname{Conf}_q(t)$: confidence that tag $t$ describes the query;
-* $\operatorname{Conf}_d(t)$: confidence that tag $t$ describes the page;
-* $W_u(t)$: user preference associated with the tag.
+* $c_q(t)$: confidence that tag $t$ describes the query;
+* $c_d(t)$: confidence that tag $t$ describes the page;
+* $W_u(t)$: user preference associated with tag $t$;
+* $M(q,d,u)$: the resulting query-document compatibility score for user $u$.
 
 This connects:
 
@@ -1255,7 +1260,7 @@ This project was particularly useful because it connected concepts that are ofte
 I moved from treating retrieval as:
 
 ```math
-\text{query} \rightarrow \mathrm{BM25} \rightarrow \text{results}
+\text{query} \rightarrow BM25 \rightarrow \text{results}
 ```
 
 toward thinking in terms of:
@@ -1295,7 +1300,7 @@ It became part of an end-to-end pipeline:
 ```math
 \text{Hyperlink Graph}
 \rightarrow
-\mathrm{PageRank}
+PageRank
 \rightarrow
 \text{Retrieval Authority}
 ```
@@ -1390,17 +1395,9 @@ u_t=f(u_{t-1},a_t)
 
 The current system would benefit from a manually reviewed relevance benchmark and standard metrics such as:
 
-```math
-\mathrm{MRR}
-```
-
-```math
-\mathrm{Recall@K}
-```
-
-```math
-\mathrm{NDCG@K}
-```
+- `MRR`
+- `Recall@K`
+- `NDCG@K`
 
 This would allow controlled comparison between:
 
