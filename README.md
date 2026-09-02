@@ -42,7 +42,7 @@ should override generic historical preferences and strongly emphasize the user's
 
 This project therefore models retrieval as a combination of:
 
-$$
+```math
 \text{Query Relevance}
 +
 \text{Page Authority}
@@ -52,7 +52,7 @@ $$
 \text{User Context}
 +
 \text{Exact Matching}
-$$
+```
 
 rather than relying on a single retrieval score.
 
@@ -425,35 +425,35 @@ Keyword relevance alone does not distinguish an authoritative portal from a rela
 
 During crawling, every hyperlink is recorded as a directed edge:
 
-$$
+```math
 (u,v)
-$$
+```
 
-where page \(u\) links to page \(v\).
+where page $u$ links to page $v$.
 
 These edges form a directed graph:
 
-$$
+```math
 G=(V,E)
-$$
+```
 
 The project computes PageRank with damping factor:
 
-$$
+```math
 \alpha = 0.85
-$$
+```
 
 using:
 
-$$
-PR(v)
+```math
+\operatorname{PR}(v)
 =
 \frac{1-\alpha}{|V|}
 +
 \alpha
-\sum_{u\in In(v)}
-\frac{PR(u)}{OutDegree(u)}
-$$
+\sum_{u\in \operatorname{In}(v)}
+\frac{\operatorname{PR}(u)}{\operatorname{OutDegree}(u)}
+```
 
 The resulting authority score is synchronized back into Elasticsearch.
 
@@ -497,7 +497,7 @@ Final Results
 
 ## Stage 1 — Candidate Retrieval
 
-Elasticsearch retrieves up to a candidate set of pages using textual relevance and authority information.
+Elasticsearch retrieves a top-$K$ candidate set using textual relevance and authority information.
 
 Standard site search uses fields approximately equivalent to:
 
@@ -536,15 +536,15 @@ The second stage performs a more explicit fusion of ranking signals.
 
 For each candidate page, the implementation derives:
 
-* \(R\): Elasticsearch relevance
-* \(P\): PageRank authority
-* \(U\): user-profile compatibility
-* \(Q\): query-tag / page-tag compatibility
-* \(E\): exact-match score
+* $R$: Elasticsearch relevance
+* $P$: PageRank authority
+* $U$: user-profile compatibility
+* $Q$: query-tag / page-tag compatibility
+* $E$: exact-match score
 
 After normalization, the ranking implementation can be summarized as:
 
-$$
+```math
 S(d,q,u)
 =
 0.48R
@@ -557,16 +557,16 @@ S(d,q,u)
 +
 0.17E
 +
-B_{exact}
-$$
+B_{\mathrm{exact}}
+```
 
 where:
 
-* \(d\) is a candidate document,
-* \(q\) is the query,
-* \(u\) is the user,
-* \(A(q,u)\) controls how strongly personalization should influence this query,
-* \(B_{exact}\) is an additional bonus for strong exact matches.
+* $d$ is a candidate document,
+* $q$ is the query,
+* $u$ is the user,
+* $A(q,u)$ controls how strongly personalization should influence this query,
+* $B_{\mathrm{exact}}$ is an additional bonus for strong exact matches.
 
 The coefficients are heuristic tuning coefficients rather than a probabilistic mixture.
 
@@ -586,21 +586,21 @@ Therefore personalization is modulated by **query affinity**.
 
 Conceptually:
 
-$$
-PersonalizationContribution
+```math
+\mathrm{PersonalizationContribution}
 =
-UserPreference
+\mathrm{UserPreference}
 \times
-QueryAffinity
-$$
+\mathrm{QueryAffinity}
+```
 
 For explicit subject queries, the implementation further reduces generic profile influence so that:
 
-$$
+```math
 \text{Current Intent}
 >
 \text{Historical Preference}
-$$
+```
 
 This is an important design principle of the system:
 
@@ -670,23 +670,23 @@ The system extracts the dominant category from recent user behavior and updates 
 
 A simplified update follows:
 
-$$
+```math
 w_{t+1}
 =
 w_t
 +
 0.1(2-w_t)
-$$
+```
 
 This gradually moves repeated preferences toward an upper target rather than increasing them without bound.
 
 Therefore the profile contains both:
 
-$$
+```math
 \text{Explicit Preferences}
 +
 \text{Implicit Behavioral Feedback}
-$$
+```
 
 ---
 
@@ -767,22 +767,22 @@ This representation is compared against page tags during reranking.
 
 A simplified compatibility function is:
 
-$$
-Match(q,d)
+```math
+\operatorname{Match}(q,d)
 =
 \sum_t
-Conf_q(t)
+\operatorname{Conf}_q(t)
 \cdot
-Conf_d(t)
+\operatorname{Conf}_d(t)
 \cdot
 \left(1+\lambda W_u(t)\right)
-$$
+```
 
 where:
 
-* \(Conf_q(t)\): confidence that tag \(t\) describes the query;
-* \(Conf_d(t)\): confidence that tag \(t\) describes the page;
-* \(W_u(t)\): user preference associated with the tag.
+* $\operatorname{Conf}_q(t)$: confidence that tag $t$ describes the query;
+* $\operatorname{Conf}_d(t)$: confidence that tag $t$ describes the page;
+* $W_u(t)$: user preference associated with the tag.
 
 This connects:
 
@@ -834,7 +834,7 @@ Global search frequency provides fallback suggestions.
 
 The objective is to combine:
 
-$$
+```math
 \text{Personal History}
 +
 \text{Global Popularity}
@@ -842,7 +842,7 @@ $$
 \text{Corpus Vocabulary}
 +
 \text{Approximate Matching}
-$$
+```
 
 for query assistance.
 
@@ -1036,6 +1036,8 @@ NKU-Information-Retrieval-System/
 │   │   ├── services/            # retrieval and business logic
 │   │   ├── dao/                 # MySQL / Elasticsearch access
 │   │   ├── admin/               # administration support
+│   │   ├── core/                # runtime configuration / clients
+│   │   │   └── config.py
 │   │   └── models/
 │   │
 │   ├── scripts/
@@ -1053,6 +1055,8 @@ NKU-Information-Retrieval-System/
 │       ├── pipelines.py
 │       ├── items.py
 │       └── settings.py
+│
+├── .env.dev.example             # safe local configuration template
 │
 ├── config/
 │   ├── page_tagger.py
@@ -1082,6 +1086,7 @@ NKU-Information-Retrieval-System/
 │
 └── scripts/
     ├── run_backend.py
+    ├── gen_frontend_config.py
     ├── start-backend.ps1
     ├── start-frontend.ps1
     └── start-crawler.ps1
@@ -1201,6 +1206,14 @@ pip install -r backend/requirements.txt
 pip install -r crawler/requirements.txt
 ```
 
+Create a local development configuration:
+
+```powershell
+Copy-Item .env.dev.example .env.dev
+```
+
+Then edit `.env.dev` with your local MySQL / Elasticsearch settings.
+
 Database schema definitions are located in:
 
 ```text
@@ -1214,13 +1227,22 @@ The backend entrypoint is:
 scripts/run_backend.py
 ```
 
-and the frontend consists of static HTML / CSS / JavaScript resources under:
+On Windows, the repository also provides:
+
+```powershell
+.\scripts\start-backend.ps1 -Env dev
+.\scripts\start-frontend.ps1 -Env dev -Port 5500
+```
+
+Both startup scripts generate `frontend/js/config.js` from the selected environment before serving the application.
+
+The frontend consists of static HTML / CSS / JavaScript resources under:
 
 ```text
 frontend/
 ```
 
-> **Note:** runtime configuration helpers and generated frontend configuration should be restored before treating the repository as a fully clone-and-run release. The current public repository is primarily preserved as the final project implementation and portfolio artifact.
+> **Configuration note:** runtime configuration helpers are tracked in the repository. Copy `.env.dev.example` to `.env.dev`, fill in local MySQL / Elasticsearch credentials, and keep `.env.dev`, `.env.prod`, `.env.key`, and the generated `frontend/js/config.js` untracked.
 
 ---
 
@@ -1232,23 +1254,23 @@ This project was particularly useful because it connected concepts that are ofte
 
 I moved from treating retrieval as:
 
-$$
-query \rightarrow BM25 \rightarrow results
-$$
+```math
+\text{query} \rightarrow \mathrm{BM25} \rightarrow \text{results}
+```
 
 toward thinking in terms of:
 
-$$
-Retrieval
+```math
+\text{Retrieval}
 +
-Authority
+\text{Authority}
 +
-Semantics
+\text{Semantics}
 +
-User Context
+\text{User Context}
 +
-Reranking
-$$
+\text{Reranking}
+```
 
 ---
 
@@ -1270,13 +1292,13 @@ PageRank was not implemented as an isolated algorithm exercise.
 
 It became part of an end-to-end pipeline:
 
-$$
-Hyperlink\ Graph
+```math
+\text{Hyperlink Graph}
 \rightarrow
-PageRank
+\mathrm{PageRank}
 \rightarrow
-Retrieval\ Authority
-$$
+\text{Retrieval Authority}
+```
 
 ---
 
@@ -1308,9 +1330,9 @@ Potential directions include:
 
 Learn:
 
-$$
+```math
 f(q,d,u)
-$$
+```
 
 from interaction or relevance data rather than manually specifying all ranking weights.
 
@@ -1342,15 +1364,15 @@ and compare retrieval quality.
 
 Study more formal user representations:
 
-$$
+```math
 h_u=f(H_u,P_u)
-$$
+```
 
 where:
 
-* \(H_u\): user interaction history
-* \(P_u\): explicit profile
-* \(h_u\): learned user representation
+* $H_u$: user interaction history
+* $P_u$: explicit profile
+* $h_u$: learned user representation
 
 ---
 
@@ -1358,9 +1380,9 @@ where:
 
 Instead of maintaining only aggregate preference weights, model preference evolution as a temporal process:
 
-$$
+```math
 u_t=f(u_{t-1},a_t)
-$$
+```
 
 ---
 
@@ -1368,17 +1390,17 @@ $$
 
 The current system would benefit from a manually reviewed relevance benchmark and standard metrics such as:
 
-$$
-MRR
-$$
+```math
+\mathrm{MRR}
+```
 
-$$
-Recall@K
-$$
+```math
+\mathrm{Recall@K}
+```
 
-$$
-NDCG@K
-$$
+```math
+\mathrm{NDCG@K}
+```
 
 This would allow controlled comparison between:
 
